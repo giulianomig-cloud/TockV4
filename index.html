@@ -729,7 +729,11 @@ button.danger:active {
 
 .last-card-line {
   display: flex; align-items: center; gap: 7px;
-  padding: 6px 12px; margin: 0 0 8px;
+  padding: 6px 12px;
+  /* 10px come tutte le altre "card" impilate qui sotto (turn-line,
+     status-row, hand-row, chat-box, #board-wrap) — prima era 8px, unico
+     valore diverso nella pila, distanze non regolari. */
+  margin: 0 0 10px;
   font-size: 0.78rem; color: var(--ink);
   background: var(--panel);
   border: 1px solid var(--panel-border);
@@ -4141,7 +4145,7 @@ function renderPawns(svg, board, pawns, lastSwap, lastCapture, lastHomeEntry) {
 // Bumped by hand each time a new build is produced — shown in the lobby so
 // it's obvious at a glance whether you're on the latest version, instead
 // of guessing from a stale browser tab or cache.
-const APP_VERSION = "v4.10";
+const APP_VERSION = "v4.11";
 
 let myColor = null;
 let myRoomId = null;
@@ -7353,15 +7357,15 @@ async function toggleJackPick(active, card, target) {
 // ---------------- Seven splitter ----------------
 
 // pos >= 1000 è la codifica interna delle 4 caselle del percorso-casa
-// (1000 + indice 0..3, vedi il commento sulla forma dello stato più sopra)
-// — un numero "grezzo" come 1003 non ha senso mostrato a schermo, va
-// tradotto in un'etichetta leggibile (a differenza delle caselle del
-// giro principale 0..63, che invece si mostrano già come numero puro
-// altrove — coerente col mockup Picker-jack.dc.html).
+// (1000 + indice 0..3, vedi il commento sulla forma dello stato più sopra).
+// Per le pedine sul giro principale il numero di casella (0..63) è un
+// dettaglio interno che al giocatore non dice niente (richiesto di
+// toglierlo) — l'icona a pallini davanti alla riga identifica già di
+// quale pedina si tratta, quindi basta "in gioco".
 function sevenRowLabel(pos) {
   if (pos === -1) return "Base → entra in gioco";
   if (pos >= 1000) return `In casa (${pos - 1000 + 1}ª casella) → prosegue`;
-  return `Casella ${pos} → prosegue`;
+  return "In gioco → prosegue";
 }
 
 function openSevenSplitter(active, card) {
