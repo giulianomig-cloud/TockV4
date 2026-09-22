@@ -9,10 +9,20 @@
 //
 // Cambia CACHE_VERSION ad ogni nuova build pubblicata (tienilo allineato ad
 // APP_VERSION in index.html) così le cache vecchie vengono scartate subito.
-const CACHE_VERSION = "v4-3";
+const CACHE_VERSION = "v4-4";
 const CACHE_NAME = "tock-cache-" + CACHE_VERSION;
 
-const APP_SHELL = ["./index.html", "./manifest.json", "./icon-192.png", "./icon-512.png"];
+const APP_SHELL = [
+  "./index.html", "./manifest.json", "./icon-192.png", "./icon-512.png",
+  // Font in locale (vedi il commento nell'<head> di index.html) — messi
+  // qui esplicitamente così sono in cache fin dalla primissima
+  // installazione, non solo dopo un primo caricamento online riuscito.
+  "./fonts/permanent-marker-latin-400-normal.woff2",
+  "./fonts/plus-jakarta-sans-latin-500-normal.woff2",
+  "./fonts/plus-jakarta-sans-latin-600-normal.woff2",
+  "./fonts/plus-jakarta-sans-latin-700-normal.woff2",
+  "./fonts/plus-jakarta-sans-latin-800-normal.woff2",
+];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
