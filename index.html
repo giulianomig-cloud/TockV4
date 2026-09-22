@@ -92,7 +92,15 @@ body {
   color: var(--ink);
 }
 
-#app { max-width: 480px; margin: 0 auto; padding: calc(26px + env(safe-area-inset-top)) 20px 20px; min-height: 100vh; }
+/* min-height: 100vh fa "saltare" leggermente il contenuto (es. il
+   tabellone) quando si interagisce con un elemento fisso in basso come il
+   picker del 7 — su mobile (Safari in particolare) l'interazione può far
+   comparire/sparire la barra degli indirizzi, che cambia il valore di
+   100vh e quindi l'altezza minima della pagina. 100dvh segue l'altezza
+   REALE visibile in ogni momento invece di quella "massima teorica", ed
+   è ignorato in automatico dai browser che non lo supportano (restano
+   sul 100vh sopra come fallback). */
+#app { max-width: 480px; margin: 0 auto; padding: calc(26px + env(safe-area-inset-top)) 20px 20px; min-height: 100vh; min-height: 100dvh; }
 
 h1 { font-size: 1.4rem; margin: 0 0 4px; color: var(--ink); }
 .app-logo { display: flex; flex-direction: column; align-items: center; margin-bottom: 16px; transform: rotate(-2deg); }
@@ -591,6 +599,24 @@ button.danger:active {
   display: flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
+}
+/* Il testo va nel suo SPAN dedicato (non buttato lì come nodo di testo
+   grezzo accanto al pallino) — su un contenitore flex, "text-overflow:
+   ellipsis" messo sul flex container non funziona in modo affidabile: il
+   testo lungo (es. un codice stanza scritto a caso) veniva tagliato di
+   netto sotto le icone invece che con i puntini "…". Qui invece lo span
+   si restringe (flex+min-width:0) e l'ellissi funziona sul vero
+   overflow del testo. */
+.top-bar-me-text {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.top-bar-me .swatch { flex-shrink: 0; }
+.top-bar-room {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -764,6 +790,7 @@ button.danger:active {
   margin-bottom: 10px;
 }
 
+
 .card-btn {
   min-width: 54px;
   width: 54px;
@@ -788,6 +815,13 @@ button.danger:active {
 .card-btn.suit-black { color: #241C15; }
 .card-btn:disabled { opacity: 0.4; cursor: default; }
 .card-btn.selected { background: var(--gold-metallic); }
+/* Carta ricevuta dal compagno (vedi renderHand/state.lastReceivedCard):
+   bordo dorato spesso + bagliore, invece di toccare il disegno interno
+   della carta (filigrana/indice), per non riaprire quella discussione. */
+.card-btn.received-highlight {
+  border: 2px solid var(--gold);
+  box-shadow: 0 0 0 2px rgba(201,154,58,0.35), 0 4px 10px rgba(201,154,58,0.5), 0 1px 0 rgba(255,255,255,0.8) inset, 0 0 0 1px rgba(255,255,255,0.55) inset;
+}
 .card-btn.card-burning {
   pointer-events: none;
   animation: cardBurn 0.45s ease-in forwards;
@@ -805,13 +839,15 @@ button.danger:active {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0px;
-  font-size: 0.95rem;
+  gap: 1px;
+  font-size: 0.88rem;
   font-weight: 800;
-  line-height: 0.9;
+  line-height: 0.95;
 }
 .card-corner-tl { top: 4px; left: 4px; }
 .card-corner-br { bottom: 4px; right: 4px; transform: rotate(180deg); }
+.card-corner-suit { width: 10px; height: 10px; }
+.card-center-watermark { opacity: 0.32; filter: drop-shadow(0 1px 1px rgba(0,0,0,0.18)); }
 
 .choice-box {
   width: 100%;
@@ -1946,6 +1982,7 @@ function newGameState(playersByColor, roomMode) {
     hasDealtBefore: false,
     lastSwap: null,
     lastCapture: null,
+    lastReceivedCard: {},
   };
 }
 
@@ -1958,6 +1995,7 @@ function normalizeState(state) {
   if (!state.pawns) state.pawns = {};
   if (!state.players) state.players = {};
   if (!state.pendingExchange) state.pendingExchange = {};
+  if (!state.lastReceivedCard) state.lastReceivedCard = {};
   if (!Array.isArray(state.playedThisCycle)) state.playedThisCycle = [];
   if (!state.roomStats || !state.roomStats.wins) state.roomStats = { wins: { A: 0, B: 0 } };
   // Stanze create prima di questa funzionalità non hanno roomMode/draft:
@@ -2035,6 +2073,11 @@ function dealNewHand(state) {
 
   state.phase = "exchanging";
   state.pendingExchange = { red: null, green: null, yellow: null, blue: null };
+  // Azzerata qui (non solo quando si risolve lo scambio) così l'evidenza
+  // gold della mano precedente sparisce subito all'inizio della mano nuova,
+  // anche se per qualche motivo quella carta fosse ancora in mano (es. non
+  // giocata) — non deve restare evidenziata oltre la mano in cui è arrivata.
+  state.lastReceivedCard = {};
   state.log.push(`Nuova mano distribuita (mazziere: ${cn(state.dealerColor)}). In attesa dello scambio tra compagni.`);
 }
 
@@ -2051,9 +2094,14 @@ function submitExchangeCard(state, color, card) {
 
   const allSubmitted = COLORS.every((c) => state.pendingExchange[c]);
   if (allSubmitted) {
+    // Tiene traccia di quale carta ciascuno ha ricevuto (non quella data)
+    // così renderHand può evidenziarla in mano — prima non si capiva quale
+    // fosse, mescolata con le proprie.
+    state.lastReceivedCard = {};
     for (const c of COLORS) {
       const received = state.pendingExchange[PARTNER_OF[c]];
       state.hands[c].push(received);
+      state.lastReceivedCard[c] = received;
     }
     state.pendingExchange = {};
     state.phase = "playing";
@@ -3474,7 +3522,7 @@ function buildPawnGroup(color, pawnIndex, capR) {
 // Remembers, per pawn, the position it was last actually drawn at — so a
 // new renderPawns() call can tell which pawns moved and animate them
 // stepping through the board instead of teleporting straight there.
-const _pawnAnimState = { positions: {}, els: {}, lastSwapId: null, lastCaptureId: null, lastHomeEntryId: null };
+const _pawnAnimState = { positions: {}, els: {}, lastSwapId: null, lastCaptureId: null, lastHomeEntryId: null, primed: false };
 // Piccolo festeggiamento dorato ("stelline" che si allargano e svaniscono)
 // quando una pedina arriva in una delle 4 caselle-casa — finora l'unico
 // feedback per un evento così importante era il testo nel registro, mentre
@@ -3758,6 +3806,7 @@ function resetPawnAnimState() {
   _pawnAnimState.lastSwapId = null; // null = "unknown yet", avoids replaying an old swap on (re)join
   _pawnAnimState.lastCaptureId = null;
   _pawnAnimState.lastHomeEntryId = null;
+  _pawnAnimState.primed = false; // true dopo la prima renderPawns: vedi commento lì sotto
 }
 
 // "Rivedi ultima mossa" per uno scambio col Jack: chiamare direttamente
@@ -3952,13 +4001,25 @@ function renderPawns(svg, board, pawns, lastSwap, lastCapture, lastHomeEntry) {
   const capR = R - 1;
   const stepMs = 170;
 
+  // Un evento (scambio/mangiata/arrivo in casa) va animato SOLO se è successo
+  // mentre questo client stava già guardando la partita, non se era già
+  // presente nello stato ricevuto al primo caricamento/rientro in stanza —
+  // altrimenti si rivedrebbe ogni volta l'ultima mossa della partita in
+  // corso appena si apre l'app. In precedenza questo si decideva confrontando
+  // Date.now() con il timestamp dell'evento (state.lastCapture.ts, scritto
+  // dall'orologio del dispositivo di CHI ha giocato la mossa): se l'orologio
+  // di due telefoni non è ben sincronizzato (capita spesso), la differenza
+  // finiva negativa o sopra la soglia e l'animazione veniva silenziosamente
+  // saltata — quella era la causa della mangiata "che a volte sparisce".
+  // Ora si usa invece _pawnAnimState.primed: false solo sulla primissima
+  // renderPawns dopo un (ri)caricamento, quindi non dipende più dagli
+  // orologi dei vari dispositivi.
+  const isFreshEvent = _pawnAnimState.primed;
+
   let freshSwap = false;
   if (lastSwap && lastSwap.id && lastSwap.id !== _pawnAnimState.lastSwapId) {
     _pawnAnimState.lastSwapId = lastSwap.id;
-    // only animate swaps that just happened — never replay an old one that
-    // was already sitting in the game state when this client (re)joined
-    const ageMs = Date.now() - (lastSwap.ts || 0);
-    if (ageMs >= 0 && ageMs < 4000) {
+    if (isFreshEvent) {
       freshSwap = true;
       flashJackSwap(svg, board, lastSwap);
     }
@@ -3966,19 +4027,18 @@ function renderPawns(svg, board, pawns, lastSwap, lastCapture, lastHomeEntry) {
   let freshCapture = false;
   if (lastCapture && lastCapture.id && lastCapture.id !== _pawnAnimState.lastCaptureId) {
     _pawnAnimState.lastCaptureId = lastCapture.id;
-    const ageMs = Date.now() - (lastCapture.ts || 0);
-    if (ageMs >= 0 && ageMs < 4000) {
+    if (isFreshEvent) {
       freshCapture = true;
       flashCapture(svg, board, lastCapture.color, lastCapture.atPos);
     }
   }
   if (lastHomeEntry && lastHomeEntry.id && lastHomeEntry.id !== _pawnAnimState.lastHomeEntryId) {
     _pawnAnimState.lastHomeEntryId = lastHomeEntry.id;
-    const ageMs = Date.now() - (lastHomeEntry.ts || 0);
-    if (ageMs >= 0 && ageMs < 4000) {
+    if (isFreshEvent) {
       flashHomeEntry(svg, board, lastHomeEntry.color, lastHomeEntry.pos - 1000);
     }
   }
+  _pawnAnimState.primed = true;
 
   const seen = new Set();
 
@@ -4064,7 +4124,7 @@ function renderPawns(svg, board, pawns, lastSwap, lastCapture, lastHomeEntry) {
 // Bumped by hand each time a new build is produced — shown in the lobby so
 // it's obvious at a glance whether you're on the latest version, instead
 // of guessing from a stale browser tab or cache.
-const APP_VERSION = "v4.7";
+const APP_VERSION = "v4.8";
 
 let myColor = null;
 let myRoomId = null;
@@ -5317,7 +5377,7 @@ function renderGameShell() {
             "div",
             { class: "top-bar-me" },
             swatchDot(myColor),
-            `${myName} · squadra ${TEAM_LABEL[TEAM_OF[myColor]]}`
+            el("span", { class: "top-bar-me-text" }, `${myName} · squadra ${TEAM_LABEL[TEAM_OF[myColor]]}`)
           )
         ),
         el(
@@ -6704,14 +6764,33 @@ function miniCardVisual(card, burned) {
   );
 }
 
+// Evidenzia solo temporaneamente la carta appena ricevuta dal compagno (poi
+// il bordo va tolto da solo) — tenuta fuori dallo state condiviso apposta:
+// uno scadere legato all'orologio di CHI L'HA RICEVUTA (locale, un solo
+// dispositivo) invece che confrontando timestamp tra dispositivi diversi,
+// che è la stessa causa già vista con la mangiata che a volte non si
+// animava per orologi non sincronizzati (vedi flashCapture).
+const _receivedHighlight = { card: null, until: 0 };
+const RECEIVED_HIGHLIGHT_MS = 10000;
+
 function renderHand(state) {
   const wrap = $("#hand-wrap");
   wrap.innerHTML = "";
   if (state.phase !== "playing") return;
   const isMyTurn = state.turnColor === myColor;
   const hand = state.hands[myColor] || [];
+  const receivedCard = state.lastReceivedCard && state.lastReceivedCard[myColor];
+  if (receivedCard && receivedCard !== _receivedHighlight.card) {
+    _receivedHighlight.card = receivedCard;
+    _receivedHighlight.until = Date.now() + RECEIVED_HIGHLIGHT_MS;
+    setTimeout(() => { if (currentState) renderHand(currentState); }, RECEIVED_HIGHLIGHT_MS);
+  } else if (!receivedCard) {
+    _receivedHighlight.card = null;
+    _receivedHighlight.until = 0;
+  }
+  const highlightNow = receivedCard && receivedCard === _receivedHighlight.card && Date.now() < _receivedHighlight.until;
   hand.forEach((card) => {
-    const btn = buildCardButton(card, isMyTurn, (e) => onCardClick(card, e));
+    const btn = buildCardButton(card, isMyTurn, (e) => onCardClick(card, e), highlightNow && card === receivedCard);
     wrap.appendChild(btn);
   });
 }
@@ -6721,43 +6800,92 @@ const BLACK_SUITS = { clubs: "♣", spades: "♠" };
 
 const SUIT_NAMES = { hearts: "hearts", diamonds: "diamonds", clubs: "clubs", spades: "spades" };
 
-function suitIconSvg(suit, size) {
+let suitGradientSeq = 0;
+// Due set di forme: quelle "semplici" (senza gambo, viewBox stretta) per i
+// semini piccoli — corner e griglia numerica — dove un dettaglio in più a
+// 10px diventava solo rumore visivo e rendeva tutto meno pulito; quelle
+// "glossy" (con gambo + gradiente) solo per il simbolo grande in filigrana
+// di Asso/Figure, l'unico abbastanza grande da apprezzare il dettaglio.
+const SIMPLE_SUIT_PATHS = {
+  hearts: "M12 21 C 6 15.5, 1.5 11.6, 1.5 7.6 C 1.5 4.3, 4 2 7 2 C 9 2, 10.8 3.1, 12 5 C 13.2 3.1, 15 2, 17 2 C 20 2, 22.5 4.3, 22.5 7.6 C 22.5 11.6, 18 15.5, 12 21 Z",
+  diamonds: "M12 1.5 L22 12 L12 22.5 L2 12 Z",
+  clubs: "M12 2.5 C14.4 2.5 16.3 4.4 16.3 6.8 C16.3 8.1 15.7 9.2 14.8 9.9 C16 9.6 17.3 9.6 18.4 10.2 C20.3 11.1 21.2 13.3 20.3 15.2 C19.4 17.1 17.2 18 15.3 17.1 C14.5 16.7 13.9 16.1 13.6 15.3 C13.8 17.2 14.4 19.1 15.4 21 L8.6 21 C9.6 19.1 10.2 17.2 10.4 15.3 C10.1 16.1 9.5 16.7 8.7 17.1 C6.8 18 4.6 17.1 3.7 15.2 C2.8 13.3 3.7 11.1 5.6 10.2 C6.7 9.6 8 9.6 9.2 9.9 C8.3 9.2 7.7 8.1 7.7 6.8 C7.7 4.4 9.6 2.5 12 2.5 Z",
+  spades: "M12 2 C12 2 4 9 4 14.5 C4 17.5 6.3 19.5 9 19.2 C10 19.1 10.9 18.7 11.5 18 C11.1 19.6 10.3 20.6 8.6 21.5 L15.4 21.5 C13.7 20.6 12.9 19.6 12.5 18 C13.1 18.7 14 19.1 15 19.2 C17.7 19.5 20 17.5 20 14.5 C20 9 12 2 12 2 Z",
+};
+const GLOSSY_SUIT_PATHS = {
+  hearts: SIMPLE_SUIT_PATHS.hearts,
+  diamonds: "M12 1.2 L21.5 12 L12 22.8 L2.5 12 Z",
+  clubs: "M12 2.5 C14.4 2.5 16.3 4.4 16.3 6.8 C16.3 8.1 15.7 9.2 14.8 9.9 C16 9.6 17.3 9.6 18.4 10.2 C20.3 11.1 21.2 13.3 20.3 15.2 C19.4 17.1 17.2 18 15.3 17.1 C14.5 16.7 13.9 16.1 13.6 15.3 C13.75 16.4 14.05 17.4 14.6 18.4 L13.1 18.4 L13.1 19.6 L10.9 19.6 L10.9 18.4 L9.4 18.4 C9.95 17.4 10.25 16.4 10.4 15.3 C10.1 16.1 9.5 16.7 8.7 17.1 C6.8 18 4.6 17.1 3.7 15.2 C2.8 13.3 3.7 11.1 5.6 10.2 C6.7 9.6 8 9.6 9.2 9.9 C8.3 9.2 7.7 8.1 7.7 6.8 C7.7 4.4 9.6 2.5 12 2.5 Z",
+  spades: "M12 2 C12 2 4 9 4 14.5 C4 17.5 6.3 19.5 9 19.2 C10 19.1 10.9 18.7 11.5 18 C11.35 18.9 11.05 19.75 10.4 20.6 L9.4 20.6 L9.4 21.8 L14.6 21.8 L14.6 20.6 L13.6 20.6 C12.95 19.75 12.65 18.9 12.5 18 C13.1 18.7 14 19.1 15 19.2 C17.7 19.5 20 17.5 20 14.5 C20 9 12 2 12 2 Z",
+};
+function suitIconSvg(suit, size, glossy) {
   const ns = "http://www.w3.org/2000/svg";
   const svg = document.createElementNS(ns, "svg");
-  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("viewBox", glossy ? "0 0 24 26" : "0 0 24 24");
   svg.setAttribute("width", size);
   svg.setAttribute("height", size);
   const path = document.createElementNS(ns, "path");
-  const paths = {
-    hearts: "M12 21 C 6 15.5, 1.5 11.6, 1.5 7.6 C 1.5 4.3, 4 2 7 2 C 9 2, 10.8 3.1, 12 5 C 13.2 3.1, 15 2, 17 2 C 20 2, 22.5 4.3, 22.5 7.6 C 22.5 11.6, 18 15.5, 12 21 Z",
-    diamonds: "M12 1.5 L22 12 L12 22.5 L2 12 Z",
-    clubs: "M12 2.5 C14.4 2.5 16.3 4.4 16.3 6.8 C16.3 8.1 15.7 9.2 14.8 9.9 C16 9.6 17.3 9.6 18.4 10.2 C20.3 11.1 21.2 13.3 20.3 15.2 C19.4 17.1 17.2 18 15.3 17.1 C14.5 16.7 13.9 16.1 13.6 15.3 C13.8 17.2 14.4 19.1 15.4 21 L8.6 21 C9.6 19.1 10.2 17.2 10.4 15.3 C10.1 16.1 9.5 16.7 8.7 17.1 C6.8 18 4.6 17.1 3.7 15.2 C2.8 13.3 3.7 11.1 5.6 10.2 C6.7 9.6 8 9.6 9.2 9.9 C8.3 9.2 7.7 8.1 7.7 6.8 C7.7 4.4 9.6 2.5 12 2.5 Z",
-    spades: "M12 2 C12 2 4 9 4 14.5 C4 17.5 6.3 19.5 9 19.2 C10 19.1 10.9 18.7 11.5 18 C11.1 19.6 10.3 20.6 8.6 21.5 L15.4 21.5 C13.7 20.6 12.9 19.6 12.5 18 C13.1 18.7 14 19.1 15 19.2 C17.7 19.5 20 17.5 20 14.5 C20 9 12 2 12 2 Z",
-  };
-  path.setAttribute("d", paths[suit]);
-  path.setAttribute("fill", "currentColor");
+  path.setAttribute("d", (glossy ? GLOSSY_SUIT_PATHS : SIMPLE_SUIT_PATHS)[suit]);
+  if (glossy) {
+    suitGradientSeq += 1;
+    const gid = "suitGrad" + suitGradientSeq;
+    const defs = document.createElementNS(ns, "defs");
+    const grad = document.createElementNS(ns, "linearGradient");
+    grad.setAttribute("id", gid);
+    grad.setAttribute("x1", "0%"); grad.setAttribute("y1", "0%");
+    grad.setAttribute("x2", "100%"); grad.setAttribute("y2", "100%");
+    const isRed = suit === "hearts" || suit === "diamonds";
+    const stops = isRed
+      ? [["0%", "#E8848F"], ["55%", "#C23B4A"], ["100%", "#96222F"]]
+      : [["0%", "#5A5145"], ["55%", "#2E241A"], ["100%", "#120D08"]];
+    stops.forEach(([off, color]) => {
+      const stop = document.createElementNS(ns, "stop");
+      stop.setAttribute("offset", off);
+      stop.setAttribute("stop-color", color);
+      grad.appendChild(stop);
+    });
+    defs.appendChild(grad);
+    svg.appendChild(defs);
+    path.setAttribute("fill", `url(#${gid})`);
+    path.setAttribute("opacity", "0.9");
+  } else {
+    path.setAttribute("fill", "currentColor");
+  }
   svg.appendChild(path);
   return svg;
 }
 
-function buildCardButton(card, enabled, onClick) {
+function buildCardButton(card, enabled, onClick, highlighted) {
   const [r, s] = card.split("-");
   const isRed = !!RED_SUITS[s];
-  const centerIcon = suitIconSvg(s, 24);
-  centerIcon.style.position = "absolute";
-  centerIcon.style.left = "50%";
-  centerIcon.style.top = "50%";
-  centerIcon.style.transform = "translate(-50%, -50%)";
+  const cornerSuit = () => {
+    const i = suitIconSvg(s, 10);
+    i.setAttribute("class", "card-corner-suit");
+    return i;
+  };
+  // Un unico simbolo grande in filigrana al centro per ogni carta (numeri
+  // compresi, non solo figure/asso) — la griglia con il conteggio esatto
+  // dei semi è stata provata ma restava troppo fitta/confusa alle
+  // dimensioni di questa carta. Indice classico numero+seme impilato in
+  // entrambi gli angoli.
+  const faceContent = suitIconSvg(s, 32, true);
+  faceContent.setAttribute("class", "card-center-watermark");
+  faceContent.style.position = "absolute";
+  faceContent.style.left = "50%";
+  faceContent.style.top = "50%";
+  faceContent.style.transform = "translate(-50%, -50%)";
+  const cornerTl = el("span", { class: "card-corner card-corner-tl" }, r, cornerSuit());
+  const cornerBr = el("span", { class: "card-corner card-corner-br" }, r, cornerSuit());
   return el(
     "button",
     {
-      class: "card-btn " + (isRed ? "suit-red" : "suit-black"),
+      class: "card-btn " + (isRed ? "suit-red" : "suit-black") + (highlighted ? " received-highlight" : ""),
       disabled: !enabled,
       onclick: onClick,
     },
-    el("span", { class: "card-corner card-corner-tl" }, r),
-    centerIcon,
-    el("span", { class: "card-corner card-corner-br" }, r)
+    cornerTl,
+    faceContent,
+    cornerBr
   );
 }
 
@@ -7364,22 +7492,24 @@ async function sendChat() {
 
 // ---------------- Log / win ----------------
 
-// Icona + colore del PALLINO per tipo di evento (non per colore del
-// giocatore) — come in Registro.dc.html, dove ogni tipo di mossa ha la
-// sua icona/colore fisso (mangiata=rossa, 7=oro, arrivo in casa=verde,
-// Jack=blu) indipendentemente da chi l'ha giocata. Le righe "normali"
+// Icona per tipo di evento, ma colore SEMPRE di chi ha compiuto l'azione
+// (byActorColor) — non più un colore fisso per tipo come nella prima
+// versione (mangiata=rossa, 7=oro, arrivo in casa=verde fissi): su
+// richiesta, il pallino deve riconoscere subito CHI ha giocato guardando
+// solo il registro, qualunque sia il tipo di mossa. Le righe "normali"
 // (mazzo distribuito, carta bruciata, mossa semplice...) restano un
-// pallino pieno del colore di chi ha agito, senza icona.
+// pallino pieno del colore di chi ha agito, senza icona (fallbackColor).
 const LOG_EVENT_TYPES = [
-  { test: (l) => l.includes("mangia"), bg: "#D9636B", sw: 3, shapes: [["path", { d: "M6 6l12 12M18 6L6 18" }]] },
-  { test: (l) => l.includes("gioca il 7") || l.includes("parte del 7"), bg: "#C99A3A", sw: 3, shapes: [["path", { d: "M8 3L4 7l4 4M16 3l4 4-4 4M4 7h16" }]] },
-  { test: (l) => l.includes("Jack"), bg: "#3E8FCB", sw: 2.6, shapes: [["path", { d: "M17 1l4 4-4 4M3 11V9a4 4 0 0 1 4-4h14M7 23l-4-4 4-4M21 13v2a4 4 0 0 1-4 4H3" }]] },
-  { test: (l) => l.includes("casa#"), bg: "#3FA77E", sw: 2.6, shapes: [["path", { d: "M12 2l2.9 6.3 6.9.8-5.1 4.7 1.4 6.9-6.1-3.5-6.1 3.5 1.4-6.9-5.1-4.7 6.9-.8z" }]] },
+  { test: (l) => l.includes("mangia"), byActorColor: true, sw: 3, shapes: [["path", { d: "M6 6l12 12M18 6L6 18" }]] },
+  { test: (l) => l.includes("gioca il 7") || l.includes("parte del 7"), byActorColor: true, sw: 3, shapes: [["path", { d: "M8 3L4 7l4 4M16 3l4 4-4 4M4 7h16" }]] },
+  { test: (l) => l.includes("Jack"), byActorColor: true, sw: 2.6, shapes: [["path", { d: "M17 1l4 4-4 4M3 11V9a4 4 0 0 1 4-4h14M7 23l-4-4 4-4M21 13v2a4 4 0 0 1-4 4H3" }]] },
+  { test: (l) => l.includes("casa#"), byActorColor: true, sw: 2.6, shapes: [["path", { d: "M12 2l2.9 6.3 6.9.8-5.1 4.7 1.4 6.9-6.1-3.5-6.1 3.5 1.4-6.9-5.1-4.7 6.9-.8z" }]] },
 ];
 function logEventBadge(line, fallbackColor) {
   const type = LOG_EVENT_TYPES.find((t) => t.test(line));
   if (!type) return el("span", { class: "log-dot", style: `background:${fallbackColor ? `var(--${fallbackColor})` : "#C7BCA4"};` });
-  return el("span", { class: "log-dot", style: `background:${type.bg};` }, svgIcon(11, 11, "0 0 24 24", "#FFFFFF", type.sw, type.shapes));
+  const bg = type.byActorColor ? (fallbackColor ? `var(--${fallbackColor})` : "#3E8FCB") : type.bg;
+  return el("span", { class: "log-dot", style: `background:${bg};` }, svgIcon(11, 11, "0 0 24 24", "#FFFFFF", type.sw, type.shapes));
 }
 // Spezza il testo sui nomi-colore e li mette in grassetto (scuro), come
 // "<b>Rosso</b> mangia <b>Verde</b> in casella 34" nel mockup — invece di
