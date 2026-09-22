@@ -4145,7 +4145,7 @@ function renderPawns(svg, board, pawns, lastSwap, lastCapture, lastHomeEntry) {
 // Bumped by hand each time a new build is produced — shown in the lobby so
 // it's obvious at a glance whether you're on the latest version, instead
 // of guessing from a stale browser tab or cache.
-const APP_VERSION = "v4.11";
+const APP_VERSION = "v4.12";
 
 let myColor = null;
 let myRoomId = null;
@@ -4614,6 +4614,27 @@ function renderManualLobby(roomId, existingPlayers) {
   });
   lobbyListenerRef = ref;
 }
+
+// Rete su mobile o cambio app/schermo bloccato possono far "addormentare"
+// momentaneamente l'ascolto realtime di Firebase — se succede proprio
+// mentre si è nella lobby di scelta colore, un colore preso da qualcun
+// altro nel frattempo può non comparire finché non si torna sulla pagina.
+// Difesa aggiuntiva: al ritorno in primo piano, se l'ascolto della lobby è
+// ancora attivo, si rilegge una volta lo stato vero da Firebase (non solo
+// ci si affida al prossimo evento realtime, che potrebbe essere andato
+// perso) e si ridisegna — così un colore preso "durante l'assenza" compare
+// comunque appena si riapre l'app, invece di restare disallineato.
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden || !lobbyListenerRef || !lastColorSectionArgs) return;
+  roomRef(lastColorSectionArgs.roomId)
+    .get()
+    .then((snap) => {
+      if (!lobbyListenerRef) return; // nel frattempo si è già entrati/cambiata stanza
+      const players = (snap.val() && normalizeState(snap.val()).players) || {};
+      renderLobbyColorSection(lastColorSectionArgs.roomId, players);
+    })
+    .catch(() => {});
+});
 
 // Ridisegna SOLO la sezione dei colori (griglia squadre + pulsanti bot) più
 // lo stato di "Entra nella stanza", senza toccare il resto della card —
@@ -5945,13 +5966,51 @@ async function botPlayTurn() {
   });
 }
 
-// Jack e 7 sono carte preziose e versatili: tenerle in mano per il momento
-// giusto vale spesso più che spenderle appena c'è una mossa legale
-// qualsiasi. Penalità applicata al loro punteggio quando giocarle ORA non
-// porta un vantaggio tattico chiaro (vedi botMoveIsTactical) — così il bot
-// preferisce, a parità di convenienza, una carta più "semplice" e si tiene
-// il Jack/7 per quando serve davvero.
-const BOT_HOLD_PENALTY = { J: 7, "7": 5 };
+// Tutti i "numeri a occhio" della valutazione del bot, raccolti in un unico
+// oggetto invece di sparsi come costanti letterali: così uno script di
+// tuning esterno (self-play headless, vedi bot-tune.js) può rigiocare
+// migliaia di partite con combinazioni diverse e misurare oggettivamente
+// quale vince di più, invece di continuare a indovinare i valori a mano.
+// `var` apposta (non `const`/`let`): deve restare una proprietà enumerabile
+// e riassegnabile del contesto globale anche quando il file è caricato in
+// una sandbox Node (vedi bot-fuzz-test.js/bot-tune.js), non solo nel
+// browser — un `const`/`let` in cima a uno script non compare come
+// proprietà dell'oggetto globale.
+var BOT_WEIGHTS = {
+  // Jack e 7 sono carte preziose e versatili: tenerle in mano per il
+  // momento giusto vale spesso più che spenderle appena c'è una mossa
+  // legale qualsiasi. Penalità applicata al loro punteggio quando giocarle
+  // ORA non porta un vantaggio tattico chiaro (vedi botMoveIsTactical) —
+  // così il bot preferisce, a parità di convenienza, una carta più
+  // "semplice" e si tiene il Jack/7 per quando serve davvero.
+  holdJ: 7,
+  hold7: 5,
+  // botCardCountAdjustment: quanto pesa la correzione basata sulle carte
+  // numeriche ancora in circolazione, sia quando siamo NOI a rischio di
+  // essere mangiati sia quando siamo NOI a poter mangiare un avversario.
+  cardCountThreatToUs: 1.5,
+  cardCountThreatFromUs: 0.9,
+  // botEvaluateBoard: valore di una pedina ancora in base (negativo: meglio
+  // essere in gioco), valore base di una pedina in casa e bonus per ogni
+  // passo ulteriore fatto in casa, e i pesi della minaccia (quanto costa
+  // avere una nostra pedina a tiro, quanto vale tenere un avversario a
+  // tiro nostro).
+  evalBase: -4,
+  evalHomeBase: 100,
+  evalHomeStep: 2,
+  threatPenalty: 1.5,
+  threatBonus: 0.9,
+};
+
+// Penalità di trattenere Jack/7, per rank — legge sempre BOT_WEIGHTS "dal
+// vivo" (non un oggetto derivato una volta sola) così una modifica di
+// BOT_WEIGHTS durante il tuning ha effetto immediato.
+function botHoldPenaltyFor(card) {
+  const r = rankOf(card);
+  if (r === "J") return BOT_WEIGHTS.holdJ;
+  if (r === "7") return BOT_WEIGHTS.hold7;
+  return 0;
+}
 
 // Vero se la pedina `color`#`pawnIndex` è "a tiro": un avversario a 1-10
 // passi da lei potrebbe raggiungerla con una sola carta nel prossimo turno.
@@ -5974,7 +6033,7 @@ function botPawnThreatened(pawns, color, pawnIndex) {
 // una pedina avversaria, fa entrare una pedina in casa, salva una pedina
 // minacciata (propria o del compagno) o rispedisce indietro parecchio una
 // pedina avversaria. Solo in quel caso vale la pena spendere la carta subito
-// — altrimenti la penalità di BOT_HOLD_PENALTY fa preferire un'alternativa.
+// — altrimenti la penalità di botHoldPenaltyFor fa preferire un'alternativa.
 function botMoveIsTactical(state, active, card, move) {
   const after = botSimulate(state, active, card, move);
   if (after.lastCapture) return true; // mangia una pedina avversaria
@@ -6008,16 +6067,34 @@ function botMoveIsTactical(state, active, card, move) {
   return false;
 }
 
+// Quale euristica prevedere per ciascun sedile durante il lookahead: un bot
+// "facile" (botChooseCardAndMoveEasy) NON trattiene mai Jack/7 per dopo — gioca
+// sempre la carta migliore SUBITO, senza applicare BOT_HOLD_PENALTY. Prevedere
+// che un bot facile si comporti come uno difficile (trattenendo le carte)
+// porta il bot difficile a fidarsi di minacce/aperture che l'avversario facile
+// in realtà non lascerebbe mai sul tavolo così a lungo. Calcolata una volta
+// sola dallo stato REALE (che ha ancora state.players) e poi passata giù nella
+// ricorsione, perché botCloneStateForSearch non clona state.players.
+function botComputeSeatLevels(state) {
+  const levels = {};
+  for (const c of COLORS) {
+    const p = state.players && state.players[c];
+    levels[c] = p && p.isBot ? (p.botLevel === "easy" ? "easy" : "hard") : null; // null = umano/sconosciuto
+  }
+  return levels;
+}
+
 // Sceglie la migliore coppia (carta, mossa) tra TUTTE quelle disponibili
 // nella mano del bot — non solo la prima carta con una mossa legale.
 function botChooseCardAndMove(state, active, seat) {
   const hand = state.hands[seat];
   const botTeam = TEAM_OF[seat];
+  const seatLevels = botComputeSeatLevels(state);
   let best = null, bestScore = -Infinity;
   for (const card of hand) {
     for (const move of botCandidatesForCard(state, active, card)) {
-      let score = botScoreMoveDeep(state, active, card, move, botTeam);
-      const holdPenalty = BOT_HOLD_PENALTY[rankOf(card)];
+      let score = botScoreMoveDeep(state, active, card, move, botTeam, seatLevels);
+      const holdPenalty = botHoldPenaltyFor(card);
       if (holdPenalty && !botMoveIsTactical(state, active, card, move)) score -= holdPenalty;
       score += botCoordinationAdjustment(state, active, seat, card, move);
       score += botCardCountAdjustment(state, active, seat, card, move);
@@ -6126,11 +6203,11 @@ function botCardCountAdjustment(state, active, seat, card, move) {
           if (TEAM_OF[c] === botTeam && TEAM_OF[oc] !== botTeam) {
             // oc (avversario) potrebbe mangiare c (nostra): quanto dista oc da c
             const w = rankWeight((pos - opos + 64) % 64);
-            if (w != null) delta -= (w - 0.5) * 1.5;
+            if (w != null) delta -= (w - 0.5) * BOT_WEIGHTS.cardCountThreatToUs;
           } else if (TEAM_OF[c] !== botTeam && TEAM_OF[oc] === botTeam) {
             // oc (nostra) potrebbe mangiare c (avversaria): quanto dista oc da c
             const w = rankWeight((opos - pos + 64) % 64);
-            if (w != null) delta += (w - 0.5) * 0.9;
+            if (w != null) delta += (w - 0.5) * BOT_WEIGHTS.cardCountThreatFromUs;
           }
         }
       }
@@ -6283,17 +6360,24 @@ function botCloneStateForSearch(state) {
 // probabilmente un altro giocatore, senza esplorare a fondo anche il suo
 // turno (terrebbe conto solo delle `BOT_LOOKAHEAD_BEAM` mosse più
 // promettenti per lui).
-function botRankedCandidates(state, active, seat, forTeam) {
+function botRankedCandidates(state, active, seat, forTeam, seatLevels) {
   const hand = state.hands[seat];
+  // Un bot facile NOTO (seatLevels[seat] === "easy") non trattiene mai
+  // Jack/7 — vedi botChooseCardAndMoveEasy, che non applica mai
+  // BOT_HOLD_PENALTY. Prevederlo qui come se trattenesse le carte farebbe
+  // credere al bot difficile che una minaccia resti "innescata" più a lungo
+  // di quanto un avversario facile la lascerebbe davvero. Per un umano o un
+  // bot difficile (seatLevels[seat] è "hard" o null/sconosciuto) resta
+  // l'assunzione precedente, più prudente.
+  const predictHold = !(seatLevels && seatLevels[seat] === "easy");
   const out = [];
   for (const card of hand) {
     for (const move of botCandidatesForCard(state, active, card)) {
       let score = botScoreMove(state, active, card, move, forTeam);
-      // Anche per prevedere la mossa di un compagno o di un avversario:
-      // presumiamo che pure loro preferiscano tenersi Jack/7 quando non
-      // servono subito, invece di giocarli a caso.
-      const holdPenalty = BOT_HOLD_PENALTY[rankOf(card)];
-      if (holdPenalty && !botMoveIsTactical(state, active, card, move)) score -= holdPenalty;
+      if (predictHold) {
+        const holdPenalty = botHoldPenaltyFor(card);
+        if (holdPenalty && !botMoveIsTactical(state, active, card, move)) score -= holdPenalty;
+      }
       out.push({ card, move, score });
     }
   }
@@ -6313,7 +6397,7 @@ function botLeafValue(clone, botTeam) {
   return base;
 }
 
-function botLookaheadValue(state, botTeam, plies) {
+function botLookaheadValue(state, botTeam, plies, seatLevels) {
   if (plies <= 0 || state.phase === "finished") return botLeafValue(state, botTeam);
   const seat = state.turnColor;
   if (!seat || !state.hands[seat]) return botLeafValue(state, botTeam);
@@ -6328,11 +6412,11 @@ function botLookaheadValue(state, botTeam, plies) {
     if (clone.turnColor === seat || COLORS.every((c) => clone.hands[c].length === 0)) {
       return botLeafValue(state, botTeam);
     }
-    return botLookaheadValue(clone, botTeam, plies - 1);
+    return botLookaheadValue(clone, botTeam, plies - 1, seatLevels);
   }
 
   const seatTeam = TEAM_OF[seat];
-  const ranked = botRankedCandidates(state, active, seat, seatTeam);
+  const ranked = botRankedCandidates(state, active, seat, seatTeam, seatLevels);
   if (ranked.length === 0) {
     // Nessuna mossa legale per nessuna carta: si brucia la meno utile e si
     // passa, senza spendere un ply "vero" di ricerca.
@@ -6340,7 +6424,7 @@ function botLookaheadValue(state, botTeam, plies) {
     burnOneCard(clone, seat, botCardToGiveAway(state, seat));
     if (COLORS.every((c) => clone.hands[c].length === 0)) return botLeafValue(state, botTeam);
     advanceTurn(clone);
-    return botLookaheadValue(clone, botTeam, plies - 1);
+    return botLookaheadValue(clone, botTeam, plies - 1, seatLevels);
   }
 
   const beam = ranked.slice(0, BOT_LOOKAHEAD_BEAM);
@@ -6355,7 +6439,7 @@ function botLookaheadValue(state, botTeam, plies) {
       value = botLeafValue(clone, botTeam);
     } else {
       advanceTurn(clone);
-      value = botLookaheadValue(clone, botTeam, plies - 1);
+      value = botLookaheadValue(clone, botTeam, plies - 1, seatLevels);
     }
     if (maximizing ? value > bestValue : value < bestValue) bestValue = value;
   }
@@ -6364,14 +6448,14 @@ function botLookaheadValue(state, botTeam, plies) {
 
 // Valuta una mossa candidata del bot con l'intero orizzonte di ricerca
 // (la sostituta "profonda" di botScoreMove per la decisione reale).
-function botScoreMoveDeep(state, active, card, move, botTeam) {
+function botScoreMoveDeep(state, active, card, move, botTeam, seatLevels) {
   const clone = botCloneStateForSearch(state);
   applyMove(clone, active, card, move);
   checkWin(clone);
   if (clone.phase === "finished") return botLeafValue(clone, botTeam);
   if (COLORS.every((c) => clone.hands[c].length === 0)) return botLeafValue(clone, botTeam);
   advanceTurn(clone);
-  return botLookaheadValue(clone, botTeam, BOT_LOOKAHEAD_PLIES - 1);
+  return botLookaheadValue(clone, botTeam, BOT_LOOKAHEAD_PLIES - 1, seatLevels);
 }
 
 // Punteggio della posizione risultante dal punto di vista della squadra
@@ -6385,8 +6469,8 @@ function botEvaluateBoard(pawns, lapped, forTeam) {
     for (let i = 0; i < 4; i++) {
       const pos = pawns[c][i];
       let val;
-      if (pos === -1) val = -4; // in base: meglio essere in gioco
-      else if (pos >= 1000) val = 100 + (pos - 1000) * 2; // in casa: sempre molto meglio
+      if (pos === -1) val = BOT_WEIGHTS.evalBase; // in base: meglio essere in gioco
+      else if (pos >= 1000) val = BOT_WEIGHTS.evalHomeBase + (pos - 1000) * BOT_WEIGHTS.evalHomeStep; // in casa: sempre molto meglio
       else val = stepsFromOwnBase(c, pos, lapped && lapped[c] && lapped[c][i]);
       score += sign * val;
     }
@@ -6402,7 +6486,7 @@ function botEvaluateBoard(pawns, lapped, forTeam) {
           const opos = pawns[oc][j];
           if (opos === -1 || opos >= 1000) continue;
           const dist = (pos - opos + 64) % 64; // passi che servirebbero all'avversario per arrivarci
-          if (dist >= 1 && dist <= 10) score -= (11 - dist) * 1.5;
+          if (dist >= 1 && dist <= 10) score -= (11 - dist) * BOT_WEIGHTS.threatPenalty;
           // Simmetrico: quanti passi servirebbero A NOI per raggiungere
           // QUESTO avversario. Prima non c'era nessun premio per restare in
           // posizione di minaccia (solo una penalità per essere minacciati),
@@ -6410,7 +6494,7 @@ function botEvaluateBoard(pawns, lapped, forTeam) {
           // piccolo bonus qui gli dà un motivo reale per restare fuori un
           // altro giro quando può tenere sotto tiro una pedina avversaria.
           const distToThem = (opos - pos + 64) % 64;
-          if (distToThem >= 1 && distToThem <= 10) score += (11 - distToThem) * 0.9;
+          if (distToThem >= 1 && distToThem <= 10) score += (11 - distToThem) * BOT_WEIGHTS.threatBonus;
         }
       }
     }
@@ -6548,7 +6632,12 @@ function renderStartControls(state) {
   const wrap = $("#start-wrap");
   wrap.innerHTML = "";
   if (state.phase !== "lobby") return;
-  const joined = Object.keys(state.players || {});
+  // COLORS (non Object.keys) apposta: Object.keys segue l'ordine di
+  // ingresso in stanza, quindi elencava i giocatori nell'ordine casuale in
+  // cui erano entrati invece che nella sequenza fissa rosso-verde-
+  // giallo-blu usata ovunque altrove nell'app (tabellone, status in
+  // partita, ecc.) — incoerente da schermata a schermata.
+  const joined = COLORS.filter((c) => state.players && state.players[c]);
   const missing = COLORS.filter((c) => !state.players[c]);
   // Se hai dimenticato di assegnare qualche posto al computer prima di
   // entrare, non serve più uscire e rientrare nella stanza (cosa che tra
@@ -6678,12 +6767,23 @@ async function sendExchangeCard(card) {
   }
 }
 
+// .status-row è una griglia a 2 colonne (vedi CSS), riempita riga per riga:
+// 1°=alto-sx, 2°=alto-dx, 3°=basso-sx, 4°=basso-dx. L'ordine COLORS
+// (rosso, verde, giallo, blu) letto così mette il giallo in basso a
+// SINISTRA e il blu in basso a DESTRA — l'opposto di come stanno le basi
+// sul tabellone vero (giallo in basso a destra, blu in basso a sinistra,
+// proseguendo in senso orario da rosso a verde). Questo ordine dedicato
+// (giallo e blu scambiati rispetto a COLORS) fa sì che la griglia rispecchi
+// davvero la disposizione fisica del tabellone — NON va confuso con COLORS,
+// che resta l'ordine di gioco/turni vero e proprio, invariato.
+const STATUS_GRID_ORDER = ["red", "green", "blue", "yellow"];
+
 function renderPlayerStatus(state) {
   const wrap = $("#status-wrap");
   wrap.innerHTML = "";
   if (state.phase !== "playing" && state.phase !== "exchanging") return;
   const row = el("div", { class: "status-row" });
-  for (const c of COLORS) {
+  for (const c of STATUS_GRID_ORDER) {
     const isTurn = state.phase === "playing" && state.turnColor === c;
     const isDealer = state.dealerColor === c;
     const isBotSeat = state.players[c] && state.players[c].isBot;
@@ -7057,6 +7157,42 @@ function ensurePickerBackdrop() {
   return bd;
 }
 
+// Blocca lo scroll della pagina sotto mentre un picker è aperto — non solo
+// per correttezza (toccare "attraverso" il backdrop non deve muovere la
+// pagina), ma perché è la vera causa del "salto" del tabellone segnalato
+// aprendo il picker del 7: anche un piccolo scroll residuo fa nascondere la
+// barra degli indirizzi di Safari su mobile, che cambia l'altezza reale
+// della pagina (100dvh, vedi il commento su #app) e sposta il contenuto.
+// Bloccando davvero lo scroll (invece di limitarsi a un overlay "fixed" con
+// la pagina sotto ancora scrollabile) quel gesto non arriva mai alla
+// pagina, quindi la barra degli indirizzi non si muove e il tabellone
+// nemmeno. Tecnica standard cross-browser: body diventa esso stesso
+// "fixed", con un offset negativo che compensa lo scroll già fatto, così
+// visivamente non cambia nulla; allo sblocco si ripristina la posizione.
+let _pickerScrollY = null;
+function lockBodyScroll() {
+  if (_pickerScrollY !== null) return; // già bloccato (es. un picker che ne sostituisce un altro)
+  _pickerScrollY = window.scrollY || window.pageYOffset || 0;
+  const s = document.body.style;
+  s.position = "fixed";
+  s.top = -_pickerScrollY + "px";
+  s.left = "0";
+  s.right = "0";
+  s.width = "100%";
+}
+function unlockBodyScroll() {
+  if (_pickerScrollY === null) return;
+  const y = _pickerScrollY;
+  _pickerScrollY = null;
+  const s = document.body.style;
+  s.position = "";
+  s.top = "";
+  s.left = "";
+  s.right = "";
+  s.width = "";
+  window.scrollTo(0, y);
+}
+
 function openPicker(contentEl) {
   const wrap = $("#picker-wrap");
   wrap.innerHTML = "";
@@ -7064,6 +7200,7 @@ function openPicker(contentEl) {
   wrap.appendChild(el("div", { class: "picker-handle" }));
   wrap.appendChild(contentEl);
   ensurePickerBackdrop().classList.add("show");
+  lockBodyScroll();
 }
 function closePicker() {
   const wrap = $("#picker-wrap");
@@ -7071,6 +7208,7 @@ function closePicker() {
   wrap.className = "";
   const bd = document.getElementById("picker-backdrop");
   if (bd) bd.classList.remove("show");
+  unlockBodyScroll();
 }
 
 // ---- Regolamento richiamabile in partita --------------------------------
