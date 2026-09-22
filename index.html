@@ -6,15 +6,60 @@
 <title>Tock</title>
 <link rel="manifest" href="manifest.json" />
 <meta name="theme-color" content="#FBF5E9" />
+<!-- Senza questo, Chrome su Android può attivare "Forza colori scuri" e
+     reinterpretare algoritmicamente la palette crema/oro pensata per la
+     modalità chiara (sfondo scurito, colori desaturati) — dichiarando che
+     la pagina è progettata SOLO per light si evita che il browser tenti
+     di "aiutare" scurendola da solo. --><meta name="color-scheme" content="light only" />
 <link rel="apple-touch-icon" href="icon-192.png" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="Tock" />
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Permanent+Marker&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
 <style>
+/* Font in locale (invece del link a Google Fonts) — il service worker
+   mette in cache solo le risorse dello stesso dominio (vedi sw.js), quindi
+   un font caricato da fonts.gstatic.com non veniva mai salvato: aprendo
+   l'app installata offline "Tock" perdeva il carattere disegnato a mano e
+   ripiegava sul cursive generico di sistema, diverso da telefono a
+   telefono. File OFL-1.1 (stessa licenza di Google Fonts), scaricati da
+   @fontsource/permanent-marker e @fontsource/plus-jakarta-sans. */
+@font-face {
+  font-family: 'Permanent Marker';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('fonts/permanent-marker-latin-400-normal.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('fonts/plus-jakarta-sans-latin-500-normal.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('fonts/plus-jakarta-sans-latin-600-normal.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('fonts/plus-jakarta-sans-latin-700-normal.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url('fonts/plus-jakarta-sans-latin-800-normal.woff2') format('woff2');
+}
 :root {
+  color-scheme: light only;
   --ink: #241C15;
   --cream: #FBF5E9;
   --panel: #FFFFFF;
@@ -4006,7 +4051,7 @@ function renderPawns(svg, board, pawns, lastSwap, lastCapture, lastHomeEntry) {
 // Bumped by hand each time a new build is produced — shown in the lobby so
 // it's obvious at a glance whether you're on the latest version, instead
 // of guessing from a stale browser tab or cache.
-const APP_VERSION = "v4.3";
+const APP_VERSION = "v4.4";
 
 let myColor = null;
 let myRoomId = null;
@@ -6705,16 +6750,20 @@ async function onCardClick(card, evt) {
     return;
   }
   if (opt.type === "seven") {
-    // Con una sola pedina in gioco l'unica distribuzione possibile è "tutti
-    // e 7 i passi su quella pedina": non c'è nessuna vera scelta da fare
-    // (il fatto stesso che "seven" sia un'opzione legale qui lo garantisce,
-    // dato che è l'unica combinazione che somma a 7 con un solo termine),
-    // quindi si gioca direttamente senza mostrare lo splitter.
-    const inPlay = currentState.pawns[active]
+    // Se una sola pedina può davvero ricevere passi (le altre sono
+    // bloccate/a fine percorso-casa, vedi sevenPawnCanReceiveSteps) l'unica
+    // distribuzione possibile è "tutti e 7 i passi su quella pedina": non
+    // c'è nessuna vera scelta da fare, quindi si gioca direttamente senza
+    // mostrare lo splitter — prima si controllava solo il numero grezzo di
+    // pedine in gioco, che apriva comunque lo splitter (con una sola riga,
+    // da portare a 7 a mano) ogni volta che le altre pedine in gioco erano
+    // bloccate pur essendocene più di una sul tabellone.
+    const eligible = currentState.pawns[active]
       .map((p, i) => i)
-      .filter((i) => currentState.pawns[active][i] !== -1);
-    if (inPlay.length === 1) {
-      await playMove(active, card, { type: "seven", distribution: [{ pawnIndex: inPlay[0], steps: 7 }] });
+      .filter((i) => currentState.pawns[active][i] !== -1)
+      .filter((i) => sevenPawnCanReceiveSteps(currentState, active, i));
+    if (eligible.length === 1) {
+      await playMove(active, card, { type: "seven", distribution: [{ pawnIndex: eligible[0], steps: 7 }] });
       return;
     }
     openSevenSplitter(active, card);
