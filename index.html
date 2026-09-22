@@ -174,8 +174,13 @@ h1 { font-size: 1.4rem; margin: 0 0 4px; color: var(--ink); }
   background: #FFFFFF;
   border: 1.5px dashed var(--panel-border);
   position: relative;
+  min-height: 158px;
   transition: border-color .12s ease, background .12s ease, transform .12s ease;
 }
+/* Il pulsante bot (quando c'è) va in fondo alla card, non subito sotto al
+   nome — così tutte e quattro le card restano della stessa altezza anche
+   quando una (es. il tuo colore già scelto) non ha nessun pulsante sotto. */
+.color-cell > .bot-btn-row, .color-cell > .bot-btn-remove { margin-top: auto; padding-top: 8px; }
 .color-cell.cc-red.cc-free { border-color: #E9C6C9; }
 .color-cell.cc-green.cc-free { border-color: #CFE4D9; }
 .color-cell.cc-yellow.cc-free { border-color: #EFDFB0; }
@@ -473,17 +478,51 @@ button.danger:active {
   filter: brightness(0.9);
 }
 
+/* Barra in alto in partita: stanza+identità a sinistra, 3 pulsanti
+   rotondi solo-icona a destra — come in In-partita.dc.html, non più tre
+   pillole di testo che vanno a capo sotto una riga separata. */
 .top-bar {
   display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
   gap: 10px;
-  font-size: 0.72rem;
-  font-weight: 600;
-  color: var(--muted-3);
-  margin-bottom: 10px;
-  white-space: nowrap;
-  overflow-x: auto;
+  margin-bottom: 16px;
 }
-.top-bar span { flex-shrink: 0; }
+.top-bar-id { min-width: 0; }
+.top-bar-room {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--muted-3);
+}
+.top-bar-me {
+  font-size: 0.82rem;
+  font-weight: 700;
+  margin-top: 3px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.top-bar-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.icon-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: #FFFFFF;
+  border: 1px solid var(--panel-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+  transition: background .12s ease, border-color .12s ease;
+}
+.icon-btn:hover { background: #F3EBD8; border-color: var(--gold); }
 .sound-test-btn {
   display: inline-flex;
   align-items: center;
@@ -607,7 +646,12 @@ button.danger:active {
   font-size: 0.8rem;
   border: 1.5px solid var(--panel-border);
 }
-.status-chip-active { border-color: var(--gold); box-shadow: 0 4px 12px -6px rgba(201,154,58,0.4); }
+/* Il giocatore di turno ha il bordo del SUO colore (come nel mockup
+   In-partita.dc.html), non un bordo dorato generico uguale per tutti. */
+.status-chip-active.sc-red { border-color: var(--red); box-shadow: 0 4px 12px -6px rgba(217,99,107,0.4); }
+.status-chip-active.sc-green { border-color: var(--green); box-shadow: 0 4px 12px -6px rgba(63,167,126,0.4); }
+.status-chip-active.sc-yellow { border-color: var(--yellow); box-shadow: 0 4px 12px -6px rgba(227,172,51,0.4); }
+.status-chip-active.sc-blue { border-color: var(--blue); box-shadow: 0 4px 12px -6px rgba(62,143,203,0.4); }
 /* flex:1 + min-width:0 fanno sì che il nome si restringa (ellissi) invece
    di andare a capo in modo incoerente tra un box e l'altro a seconda che
    sia presente o no l'icona del mazziere accanto. */
@@ -735,17 +779,72 @@ button.secondary.selected {
   border-color: var(--ink);
 }
 
+/* Riquadro "picker" del 7: una card per pedina (icona a dado + testo +
+   pulsanti tondi -/+), non più una semplice riga di testo — come nel
+   mockup Picker-sette.dc.html. */
+.seven-pips { display: flex; gap: 6px; margin: 12px 0 16px; }
+.seven-pip { width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid var(--panel-border); }
+.seven-pip.filled { background: var(--gold); border-color: var(--gold); }
 .seven-row {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 6px 0;
+  gap: 12px;
+  background: #FFFFFF;
+  border: 1.5px solid var(--panel-border);
+  border-radius: 14px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
 }
+.seven-row.has-steps { background: #FBF1D8; border-color: var(--gold); }
+.seven-row-text { flex-grow: 1; font-size: 0.84rem; font-weight: 700; color: #5A5145; }
+.seven-step-btn {
+  width: 30px; height: 30px; border-radius: 50%;
+  border: 1.5px solid var(--panel-border); background: var(--cream);
+  font-size: 1rem; font-weight: 800; color: #5A5145; cursor: pointer;
+}
+.seven-row.has-steps .seven-step-btn { background: #FFFFFF; }
 .seven-val {
-  min-width: 22px;
+  min-width: 18px;
   text-align: center;
-  font-weight: 700;
+  font-weight: 800;
+  font-size: 0.94rem;
+  color: var(--ink);
 }
+
+/* Riquadro "picker" del regolamento: badge quadrato colorato + titolo +
+   corpo, invece di solo testo in fila — come nel mockup Regole.dc.html. */
+.rule-row { display: flex; gap: 12px; margin-bottom: 14px; }
+.rule-icon {
+  width: 34px; height: 34px; border-radius: 10px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 800; font-size: 0.86rem;
+}
+.rule-title { font-size: 0.84rem; font-weight: 800; margin-bottom: 2px; color: var(--ink); }
+.rule-body { font-size: 0.75rem; font-weight: 600; color: #6B6152; line-height: 1.5; }
+
+/* Picker del Jack: barra di avanzamento a 2 slot (pedina scelta / da
+   scegliere) sopra la griglia di "chip" cliccabili — come nel mockup
+   Picker-jack.dc.html, non più un elenco semplice di bottoni. */
+.jack-progress { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
+.jack-slot {
+  display: flex; align-items: center; gap: 8px;
+  border-radius: 12px; padding: 8px 12px; font-size: 0.78rem; font-weight: 700;
+  flex: 1; min-width: 0;
+}
+.jack-slot.filled { background: #FBF1D8; border: 1.5px solid var(--gold); color: #6B4E12; }
+.jack-slot.empty {
+  background: #FFFFFF; border: 1.5px dashed var(--panel-border); color: var(--muted-3);
+  justify-content: center;
+}
+.jack-slot span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.jack-chips { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 18px; }
+.jack-chip {
+  display: flex; align-items: center; gap: 9px;
+  background: #FFFFFF; border: 1.5px solid var(--panel-border); border-radius: 14px;
+  padding: 10px; cursor: pointer; text-align: left;
+}
+.jack-chip:hover { border-color: var(--gold); }
+.jack-chip span { font-size: 0.72rem; font-weight: 700; color: #5A5145; line-height: 1.3; }
 
 .teams-hint {
   margin-top: -6px;
@@ -3184,6 +3283,24 @@ const PIP_LAYOUTS = {
   3: [[-0.34, -0.34], [0.34, -0.34], [-0.34, 0.34], [0.34, 0.34]],
 };
 
+// Icona "pedina piatta" (cerchio colorato + pallini bianchi a dado) usata
+// fuori dal tabellone — nei picker Jack/7, dove uno sfondo piatto senza i
+// gradienti/halo del tabellone vero è più leggibile su una piccola card.
+function pipIcon(color, pawnIndex, size) {
+  const ns = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("width", size);
+  svg.setAttribute("height", size);
+  svg.setAttribute("viewBox", `0 0 ${size} ${size}`);
+  const r = size / 2;
+  svg.appendChild(ns_el("circle", { cx: r, cy: r, r, fill: BASE_COL[color] }));
+  const pipR = size * 0.09;
+  (PIP_LAYOUTS[pawnIndex] || PIP_LAYOUTS[0]).forEach(([dx, dy]) => {
+    svg.appendChild(ns_el("circle", { cx: r + dx * size, cy: r + dy * size, r: pipR, fill: "#FFFFFF" }));
+  });
+  return svg;
+}
+
 // Build one pawn's full visual (halo, shadow, reeded-rim medallion, dice
 // pips), relative to (0,0). The returned <g> is meant to be placed inside
 // an outer <g transform="translate(x,y)"> — see renderPawns.
@@ -3809,7 +3926,7 @@ function renderPawns(svg, board, pawns, lastSwap, lastCapture, lastHomeEntry) {
 // Bumped by hand each time a new build is produced — shown in the lobby so
 // it's obvious at a glance whether you're on the latest version, instead
 // of guessing from a stale browser tab or cache.
-const APP_VERSION = "v4.1";
+const APP_VERSION = "v4.2";
 
 let myColor = null;
 let myRoomId = null;
@@ -5014,15 +5131,51 @@ function renderGameShell() {
     el(
       "div",
       { class: "game-shell" },
-      el("div", { class: "top-bar" },
-        el("span", {}, "Stanza: " + myRoomId),
-        el("span", {}, "Sei: ", swatchDot(myColor), myName + " (" + colorLabel(myColor) + ")" +
-          " · squadra " + TEAM_LABEL[TEAM_OF[myColor]]),
-      ),
-      el("div", { style: "display:flex; justify-content:flex-end; gap:8px; margin-bottom:6px; flex-wrap:wrap;" },
-        el("button", { class: "sound-test-btn", onclick: () => shareInviteLink(myRoomId) }, "📤 Invita amici"),
-        el("button", { class: "sound-test-btn", onclick: replayLastMove }, "🔁 Rivedi ultima mossa"),
-        el("button", { class: "sound-test-btn", onclick: openRulesPanel }, "📖 Regole"),
+      el(
+        "div",
+        { class: "top-bar" },
+        el(
+          "div",
+          { class: "top-bar-id" },
+          el("div", { class: "top-bar-room" }, "Stanza " + myRoomId),
+          el(
+            "div",
+            { class: "top-bar-me" },
+            swatchDot(myColor),
+            `${myName} · squadra ${TEAM_LABEL[TEAM_OF[myColor]]}`
+          )
+        ),
+        el(
+          "div",
+          { class: "top-bar-actions" },
+          el(
+            "button",
+            { class: "icon-btn", "aria-label": "Invita amici", onclick: () => shareInviteLink(myRoomId) },
+            svgIcon(14, 14, "0 0 24 24", "#5A5145", 2.2, [
+              ["circle", { cx: 18, cy: 5, r: 3 }],
+              ["circle", { cx: 6, cy: 12, r: 3 }],
+              ["circle", { cx: 18, cy: 19, r: 3 }],
+              ["line", { x1: 8.6, y1: 10.6, x2: 15.4, y2: 6.4 }],
+              ["line", { x1: 8.6, y1: 13.4, x2: 15.4, y2: 17.6 }],
+            ])
+          ),
+          el(
+            "button",
+            { class: "icon-btn", "aria-label": "Rivedi ultima mossa", onclick: replayLastMove },
+            svgIcon(14, 14, "0 0 24 24", "#5A5145", 2.2, [
+              ["polyline", { points: "1 4 1 10 7 10" }],
+              ["path", { d: "M3.51 15a9 9 0 1 0 .49-9.36L1 10" }],
+            ])
+          ),
+          el(
+            "button",
+            { class: "icon-btn", "aria-label": "Regole", onclick: openRulesPanel },
+            svgIcon(14, 14, "0 0 24 24", "#5A5145", 2.2, [
+              ["path", { d: "M4 19.5A2.5 2.5 0 0 1 6.5 17H20" }],
+              ["path", { d: "M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" }],
+            ])
+          )
+        )
       ),
       el("div", { id: "conn-banner" }),
       el("div", { id: "dealer-draw-wrap" }),
@@ -6190,7 +6343,7 @@ function renderPlayerStatus(state) {
     row.appendChild(
       el(
         "div",
-        { class: "status-chip" + (isTurn ? " status-chip-active" : "") },
+        { class: `status-chip sc-${c}` + (isTurn ? " status-chip-active" : "") },
         el("span", { class: "status-name" }, playerName(state, c)),
         // Nessun indicatore quando tutto è normale (online, o un bot che
         // per definizione "c'è" sempre) — solo un'icona quando un
@@ -6575,21 +6728,38 @@ function replayLastMove() {
   }
 }
 
+// Badge colorato davanti a ogni sezione, come nel mockup Regole.dc.html
+// (lì ogni sezione aveva un'icona diversa — qui, con più sezioni di testo
+// da coprire, un numero su uno sfondo tinteggiato a rotazione ottiene lo
+// stesso ritmo visivo senza dover inventare 7 icone su misura).
+const RULE_BADGES = [
+  { bg: "#FBF1D8", fg: "#9C7420" },
+  { bg: "#F7DCDE", fg: "#A5424A" },
+  { bg: "#EAEAEA", fg: "#3B2A18" },
+  { bg: "#E7F4EC", fg: "#2C7A54" },
+  { bg: "#DCE9F3", fg: "#2E6690" },
+];
 function openRulesPanel() {
   openPicker(
     el(
       "div",
       { class: "choice-box" },
-      el("p", { style: "font-weight:700;margin-bottom:8px;" }, "📖 Regolamento"),
-      RULES_SECTIONS.map((s) =>
-        el(
+      el("p", { style: "font-weight:800;font-size:1.05rem;margin-bottom:16px;" }, "📖 Regolamento"),
+      RULES_SECTIONS.map((s, i) => {
+        const badge = RULE_BADGES[i % RULE_BADGES.length];
+        return el(
           "div",
-          { style: "margin-bottom:12px;" },
-          el("p", { style: "font-weight:700;margin-bottom:3px;" }, s.title),
-          el("p", { class: "muted", style: "margin:0;line-height:1.4;" }, s.body)
-        )
-      ),
-      el("button", { class: "secondary", onclick: closePicker }, "Chiudi")
+          { class: "rule-row" },
+          el("span", { class: "rule-icon", style: `background:${badge.bg};color:${badge.fg};` }, String(i + 1)),
+          el(
+            "div",
+            {},
+            el("div", { class: "rule-title" }, s.title),
+            el("div", { class: "rule-body" }, s.body)
+          )
+        );
+      }),
+      el("button", { class: "secondary", onclick: closePicker, style: "width:100%;margin-top:4px;" }, "Chiudi")
     )
   );
 }
@@ -6670,25 +6840,59 @@ function openJackPicker(active, card) {
   renderJackPicker(active, card);
 }
 
+function jackSlot(t, emptyLabel) {
+  if (!t) return el("div", { class: "jack-slot empty" }, el("span", {}, emptyLabel));
+  return el(
+    "div",
+    { class: "jack-slot filled" },
+    pipIcon(t.color, t.pawnIndex, 24),
+    el("span", {}, `${colorLabel(t.color)} · casella ${t.pos}`)
+  );
+}
 function renderJackPicker(active, card) {
-  const targets = jackableTargets(currentState);
+  const targets = jackableTargets(currentState).filter(
+    (t) => !jackPicked.some((p) => p.color === t.color && p.pawnIndex === t.pawnIndex)
+  );
   openPicker(
     el(
       "div",
       { class: "choice-box" },
-      el("p", {}, `Jack: scegli due pedine da scambiare (${jackPicked.length}/2 selezionate).`),
-      targets.map((t) => {
-        const picked = jackPicked.some((p) => p.color === t.color && p.pawnIndex === t.pawnIndex);
-        return el(
-          "button",
-          {
-            class: "secondary" + (picked ? " selected" : ""),
-            onclick: () => toggleJackPick(active, card, t),
-          },
-          swatchDot(t.color), `${colorLabel(t.color)} #${t.pawnIndex + 1}`
-        );
-      }),
-      el("button", { class: "danger", onclick: () => { jackPicked = []; closePicker(); } }, "Annulla")
+      el("p", { style: "font-weight:800;font-size:1.05rem;margin-bottom:4px;" }, "Scambia due pedine"),
+      el("p", { class: "muted", style: "font-size:0.78rem;margin:0 0 16px;" }, "Tocca due pedine sul tabellone, oppure scegli qui sotto."),
+      el(
+        "div",
+        { class: "jack-progress" },
+        jackSlot(jackPicked[0], "Scegli la prima"),
+        svgIcon(18, 18, "0 0 24 24", "#C99A3A", 2.4, [
+          ["path", { d: "M17 1l4 4-4 4" }],
+          ["path", { d: "M3 11V9a4 4 0 0 1 4-4h14" }],
+          ["path", { d: "M7 23l-4-4 4-4" }],
+          ["path", { d: "M21 13v2a4 4 0 0 1-4 4H3" }],
+        ]),
+        jackSlot(jackPicked[1], "Scegli la seconda")
+      ),
+      el(
+        "div",
+        { class: "jack-chips" },
+        targets.map((t) =>
+          el(
+            "button",
+            { class: "jack-chip", onclick: () => toggleJackPick(active, card, t) },
+            pipIcon(t.color, t.pawnIndex, 28),
+            el(
+              "span",
+              {},
+              el("span", { style: "display:block;" }, colorLabel(t.color)),
+              el("span", { style: "display:block;" }, `casella ${t.pos}`)
+            )
+          )
+        )
+      ),
+      el(
+        "button",
+        { class: "text-link-btn", style: "display:flex;width:100%;justify-content:center;", onclick: () => { jackPicked = []; closePicker(); } },
+        "Annulla"
+      )
     )
   );
 }
@@ -6727,27 +6931,43 @@ function renderSevenSplitter(active, card, pawns) {
     el(
       "div",
       { class: "choice-box" },
-      el("p", {}, `7: distribuisci 7 passi tra le tue pedine (restano ${remaining}).`),
+      el(
+        "div",
+        { style: "display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;" },
+        el("div", { style: "font-weight:800;font-size:1.05rem;" }, "Distribuisci il 7"),
+        el("div", { class: "muted", style: "font-size:0.78rem;font-weight:700;" }, `Restano ${remaining}`)
+      ),
+      el(
+        "div",
+        { class: "seven-pips" },
+        Array.from({ length: 7 }, (_, i) => el("span", { class: "seven-pip" + (i < total ? " filled" : "") }))
+      ),
       pawns.map((p) =>
         el(
           "div",
-          { class: "seven-row" },
-          el("span", {}, `Pedina #${p.pawnIndex + 1}`),
-          el("button", { class: "secondary", onclick: () => adjustSeven(active, card, pawns, p.pawnIndex, -1) }, "−"),
+          { class: "seven-row" + (sevenAllocation[p.pawnIndex] > 0 ? " has-steps" : "") },
+          pipIcon(active, p.pawnIndex, 34),
+          el("div", { class: "seven-row-text" }, p.pos === -1 ? "Base → entra in gioco" : `Casella ${p.pos} → prosegue`),
+          el("button", { class: "seven-step-btn", onclick: () => adjustSeven(active, card, pawns, p.pawnIndex, -1) }, "−"),
           el("span", { class: "seven-val" }, String(sevenAllocation[p.pawnIndex])),
-          el("button", { class: "secondary", onclick: () => adjustSeven(active, card, pawns, p.pawnIndex, 1) }, "+")
+          el("button", { class: "seven-step-btn", onclick: () => adjustSeven(active, card, pawns, p.pawnIndex, 1) }, "+")
         )
       ),
       el(
         "button",
         {
           class: "primary",
+          style: "margin-bottom:10px;",
           disabled: remaining !== 0,
           onclick: () => confirmSeven(active, card),
         },
-        "Conferma"
+        remaining === 0 ? "Conferma" : `Conferma (mancano ${remaining} passi)`
       ),
-      el("button", { class: "danger", onclick: () => { sevenAllocation = null; closePicker(); } }, "Annulla")
+      el(
+        "button",
+        { class: "text-link-btn", style: "display:flex;width:100%;justify-content:center;", onclick: () => { sevenAllocation = null; closePicker(); } },
+        "Annulla"
+      )
     )
   );
 }
