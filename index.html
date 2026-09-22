@@ -251,7 +251,12 @@ h1 { font-size: 1.4rem; margin: 0 0 4px; color: var(--ink); }
   background: #FFFFFF;
   border: 1.5px solid var(--panel-border);
   position: relative;
-  min-height: 122px;
+  /* Altezza fissa (non solo un minimo) uguale al contenuto più alto
+     possibile (libero, con etichetta + due pulsanti impilati) — così le
+     quattro card restano identiche SEMPRE, in ogni stato e combinazione,
+     non solo tra le due della stessa riga. */
+  min-height: 178px;
+  height: 178px;
   transition: border-color .12s ease, background .12s ease, transform .12s ease;
 }
 /* Il pulsante bot (quando c'è) va in fondo alla card, non subito sotto al
@@ -4059,7 +4064,7 @@ function renderPawns(svg, board, pawns, lastSwap, lastCapture, lastHomeEntry) {
 // Bumped by hand each time a new build is produced — shown in the lobby so
 // it's obvious at a glance whether you're on the latest version, instead
 // of guessing from a stale browser tab or cache.
-const APP_VERSION = "v4.6";
+const APP_VERSION = "v4.7";
 
 let myColor = null;
 let myRoomId = null;
