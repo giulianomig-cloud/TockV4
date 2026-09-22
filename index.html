@@ -209,15 +209,12 @@ h1 { font-size: 1.4rem; margin: 0 0 4px; color: var(--ink); }
 /* Squadre raggruppate visivamente: le due pedine dello stesso team stanno
    nello stesso riquadro tratteggiato, con un badge "VS" al centro tra i
    due riquadri — così si capisce subito chi gioca con chi. */
-.teams-grid { display: flex; gap: 14px; margin-bottom: 16px; position: relative; }
-.team-group {
-  flex: 1;
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 10px;
-  padding: 2px;
-  border-radius: 16px;
-}
+/* Griglia unica 2x2 (non più due grid separate per squadra): così le due
+   card sulla stessa riga (es. rosso+verde, giallo+blu) condividono sempre
+   la stessa altezza — con due grid indipendenti una card senza pulsante
+   bot sotto (es. il tuo colore già scelto) restava più bassa di quella
+   affiancata, con le dimensioni visibilmente diverse. */
+.teams-grid { display: grid; grid-template-columns: 1fr 1fr; grid-auto-rows: 1fr; gap: 10px 14px; margin-bottom: 16px; position: relative; }
 .vs-badge {
   position: absolute;
   top: 50%;
@@ -4062,7 +4059,7 @@ function renderPawns(svg, board, pawns, lastSwap, lastCapture, lastHomeEntry) {
 // Bumped by hand each time a new build is produced — shown in the lobby so
 // it's obvious at a glance whether you're on the latest version, instead
 // of guessing from a stale browser tab or cache.
-const APP_VERSION = "v4.5";
+const APP_VERSION = "v4.6";
 
 let myColor = null;
 let myRoomId = null;
@@ -4619,7 +4616,7 @@ function renderLobbyColorSection(roomId, existingPlayers) {
       return el(
         "button",
         { class: "bot-btn bot-btn-remove", onclick: () => removeBotFromColor(roomId, c, () => {}) },
-        `🤖 Libera questo posto (${lv})`
+        `🤖 Libera posto (${lv})`
       );
     }
     return "";
@@ -4632,15 +4629,15 @@ function renderLobbyColorSection(roomId, existingPlayers) {
     const state = occupant ? "cc-taken" : myColor === c ? "cc-mine" : "cc-free";
     return el("div", { class: `color-cell cc-${c} ${state}` }, colorBtn(c), botCell(c));
   };
-  const teamAColors = COLORS.filter((c) => TEAM_OF[c] === "A");
-  const teamBColors = COLORS.filter((c) => TEAM_OF[c] === "B");
+  // COLORS è già nell'ordine giusto per riempire la griglia 2x2 riga per
+  // riga (rosso+verde sulla prima riga, giallo+blu sulla seconda) — vedi il
+  // commento su .teams-grid per il perché di una griglia unica.
   wrap.innerHTML = "";
   wrap.appendChild(
     el(
       "div",
       { class: "teams-grid" },
-      el("div", { class: "team-group" }, teamAColors.map(colorCell)),
-      el("div", { class: "team-group" }, teamBColors.map(colorCell)),
+      COLORS.map(colorCell),
       el("div", { class: "vs-badge" }, el("span", {}, "VS"))
     )
   );
