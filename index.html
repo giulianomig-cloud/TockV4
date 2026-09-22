@@ -79,8 +79,14 @@
 
 * { box-sizing: border-box; }
 
+html {
+  background: #FBF5E9;
+  color-scheme: light only;
+}
+
 body {
   margin: 0;
+  min-height: 100%;
   font-family: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   background: #FBF5E9;
   color: var(--ink);
@@ -244,21 +250,25 @@ h1 { font-size: 1.4rem; margin: 0 0 4px; color: var(--ink); }
   display: flex;
   flex-direction: column;
   border-radius: 16px;
-  padding: 14px;
+  padding: 13px;
   background: #FFFFFF;
-  border: 1.5px dashed var(--panel-border);
+  border: 1.5px solid var(--panel-border);
   position: relative;
-  min-height: 158px;
+  min-height: 122px;
   transition: border-color .12s ease, background .12s ease, transform .12s ease;
 }
 /* Il pulsante bot (quando c'è) va in fondo alla card, non subito sotto al
    nome — così tutte e quattro le card restano della stessa altezza anche
    quando una (es. il tuo colore già scelto) non ha nessun pulsante sotto. */
-.color-cell > .bot-btn-row, .color-cell > .bot-btn-remove { margin-top: auto; padding-top: 8px; }
-.color-cell.cc-red.cc-free { border-color: #E9C6C9; }
-.color-cell.cc-green.cc-free { border-color: #CFE4D9; }
-.color-cell.cc-yellow.cc-free { border-color: #EFDFB0; }
-.color-cell.cc-blue.cc-free { border-color: #CFE0EC; }
+.color-cell > .bot-cell-assign, .color-cell > .bot-btn-remove { margin-top: auto; padding-top: 10px; }
+.bot-assign-label { font-size: 0.62rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; color: var(--muted); margin-bottom: 5px; }
+/* Libero: prima era solo un bordo tratteggiato su sfondo bianco (tanto
+   vuoto, poco invitante); ora bordo pieno più leggero + una leggerissima
+   tinta del colore, così la card si distingue subito anche da lontano. */
+.color-cell.cc-red.cc-free { border-color: #EDD3D5; background: #FDF6F6; }
+.color-cell.cc-green.cc-free { border-color: #D7E9DF; background: #F4FAF7; }
+.color-cell.cc-yellow.cc-free { border-color: #F1E4BB; background: #FDFAEF; }
+.color-cell.cc-blue.cc-free { border-color: #D7E6F0; background: #F4F9FC; }
 .color-cell.cc-taken {
   border-style: solid;
   border-width: 1.5px;
@@ -307,10 +317,10 @@ h1 { font-size: 1.4rem; margin: 0 0 4px; color: var(--ink); }
 .color-btn:disabled { cursor: default; }
 .color-card-dot {
   display: block;
-  width: 30px;
-  height: 30px;
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
   background: currentColor;
 }
 .cc-free .color-card-dot { opacity: 0.85; }
@@ -324,23 +334,24 @@ h1 { font-size: 1.4rem; margin: 0 0 4px; color: var(--ink); }
 .cc-green .color-card-sub { color: #2C7A54; }
 .cc-yellow .color-card-sub { color: #A5842B; }
 .cc-blue .color-card-sub { color: #2E6690; }
-.color-card-free-label { font-size: 0.82rem; font-weight: 700; color: var(--muted-3); margin-bottom: 8px; }
+.color-card-free-label { font-size: 0.86rem; font-weight: 800; color: var(--muted-3); margin-bottom: 8px; }
 .bot-btn {
-  font-size: 0.68rem;
+  font-size: 0.72rem;
   font-weight: 700;
-  padding: 5px 4px;
+  padding: 7px 6px;
   border-radius: 999px;
   border: 1px solid var(--panel-border);
-  background: var(--cream);
+  background: #FFFFFF;
   color: var(--muted-3);
   cursor: pointer;
 }
-.bot-btn:hover { background: #F3EBD8; }
+.bot-btn:hover { background: var(--cream); }
+.bot-btn:active { transform: translateY(1px); }
 .bot-btn-remove { color: #A5424A; border-color: #e0b3a8; background: #FFFFFF; }
 /* Due pulsanti affiancati (Normale/Difficile) al posto di uno solo, quando
    il posto va assegnato al computer — vedi botCell/renderStartControls. */
-.bot-btn-row { display: flex; gap: 4px; }
-.bot-btn-row .bot-btn { flex: 1; padding: 5px 3px; }
+.bot-btn-row { display: flex; flex-direction: column; gap: 6px; }
+.bot-btn-row .bot-btn { width: 100%; padding: 7px 4px; }
 
 /* Pulsanti "assegna al computer" per i posti ancora liberi, mostrati nella
    sala d'attesa (dopo essere entrati) invece che solo nella lobby iniziale. */
@@ -4051,7 +4062,7 @@ function renderPawns(svg, board, pawns, lastSwap, lastCapture, lastHomeEntry) {
 // Bumped by hand each time a new build is produced — shown in the lobby so
 // it's obvious at a glance whether you're on the latest version, instead
 // of guessing from a stale browser tab or cache.
-const APP_VERSION = "v4.4";
+const APP_VERSION = "v4.5";
 
 let myColor = null;
 let myRoomId = null;
@@ -4462,7 +4473,10 @@ function renderManualLobby(roomId, existingPlayers) {
             el("span", { class: "ld-yellow" }),
             el("span", { class: "ld-blue" })
           ),
-          el("h1", {}, "Tock")
+          el("h1", {}, "Tock"),
+          svgIcon("74", "10", "0 0 150 16", "#C99A3A", "4", [
+            ["path", { d: "M 4 8 Q 22 -2 40 8 T 76 8 T 112 8 T 146 8" }],
+          ], "app-logo-squiggle")
         ),
         el(
           "button",
@@ -4501,6 +4515,7 @@ function renderManualLobby(roomId, existingPlayers) {
     )
   );
 
+  sizeLogoDotsToTitle();
   renderLobbyColorSection(roomId, existingPlayers);
 
   // Ascolto in tempo reale: prima questa schermata era una fotografia presa
@@ -4589,9 +4604,14 @@ function renderLobbyColorSection(roomId, existingPlayers) {
     if (!taken) {
       return el(
         "div",
-        { class: "bot-btn-row" },
-        el("button", { class: "bot-btn", onclick: () => assignBotToColor(roomId, c, () => {}, "easy") }, "🤖 Normale"),
-        el("button", { class: "bot-btn", onclick: () => assignBotToColor(roomId, c, () => {}, "hard") }, "🤖 Difficile")
+        { class: "bot-cell-assign" },
+        el("div", { class: "bot-assign-label" }, "Assegna al computer:"),
+        el(
+          "div",
+          { class: "bot-btn-row" },
+          el("button", { class: "bot-btn", onclick: () => assignBotToColor(roomId, c, () => {}, "easy") }, "🤖 Normale"),
+          el("button", { class: "bot-btn", onclick: () => assignBotToColor(roomId, c, () => {}, "hard") }, "🤖 Difficile")
+        )
       );
     }
     if (taken.isBot) {
@@ -5255,6 +5275,28 @@ function renderDraftFinalizing(state) {
 
 // ---------------- Game shell ----------------
 
+// Esce dalla schermata di gioco e torna alla home, SENZA chiudere la
+// partita per gli altri: la partita su Firebase resta viva (gli altri
+// giocatori/bot continuano), possiamo rientrare più tardi con lo stesso
+// codice stanza. Stacchiamo solo gli ascoltatori/la presenza di QUESTO
+// client, con lo stesso schema già usato quando si cambia stanza/colore
+// (vedi setupOwnPresence).
+function leaveGameToHome() {
+  const ok = confirm(
+    "Tornare alla schermata iniziale?\n\nLa partita continua per gli altri giocatori: potrai rientrare più tardi con lo stesso codice stanza."
+  );
+  if (!ok) return;
+  if (myRoomId) roomRef(myRoomId).off("value");
+  if (presenceListenerRef) { presenceListenerRef.off(); presenceListenerRef = null; }
+  if (myPresenceRef) {
+    myPresenceRef.onDisconnect().cancel();
+    myPresenceRef.remove().catch(() => {});
+    myPresenceRef = null;
+    myPresenceRoomColor = null;
+  }
+  renderLobby();
+}
+
 function renderGameShell() {
   const root = $("#app");
   root.innerHTML = "";
@@ -5304,6 +5346,14 @@ function renderGameShell() {
             svgIcon(14, 14, "0 0 24 24", "#5A5145", 2.2, [
               ["path", { d: "M4 19.5A2.5 2.5 0 0 1 6.5 17H20" }],
               ["path", { d: "M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" }],
+            ])
+          ),
+          el(
+            "button",
+            { class: "icon-btn", "aria-label": "Torna alla schermata iniziale", onclick: leaveGameToHome },
+            svgIcon(14, 14, "0 0 24 24", "#5A5145", 2.2, [
+              ["path", { d: "M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" }],
+              ["polyline", { points: "9 22 9 12 15 12 15 22" }],
             ])
           )
         )
