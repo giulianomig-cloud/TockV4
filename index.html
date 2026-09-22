@@ -148,6 +148,16 @@ h1 { font-size: 1.4rem; margin: 0 0 4px; color: var(--ink); }
 .exchange-pill-row:first-of-type { margin-top: 10px; }
 .exchange-pill-lead { color: var(--muted-3); }
 .exchange-pill-lead.done { color: #4E9770; }
+/* Badge di spunta al posto dell'emoji ✅ — un pallino pieno con icona SVG
+   in tinta, come gli altri indicatori dell'app (log-dot, icon-btn), invece
+   di un emoji che stona con lo stile grafico del resto. */
+.exchange-done-line { display: flex; align-items: center; gap: 8px; }
+.exchange-done-badge {
+  flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  width: 20px; height: 20px; border-radius: 50%;
+  background: #4E9770;
+}
 .exchange-pill {
   display: inline-flex; align-items: center; gap: 4px;
   border-radius: 999px; padding: 3px 9px 3px 6px;
@@ -598,24 +608,31 @@ button.danger:active {
   font-weight: 700;
   margin-top: 3px;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 6px;
   min-width: 0;
 }
-/* Il testo va nel suo SPAN dedicato (non buttato lì come nodo di testo
-   grezzo accanto al pallino) — su un contenitore flex, "text-overflow:
-   ellipsis" messo sul flex container non funziona in modo affidabile: il
-   testo lungo (es. un codice stanza scritto a caso) veniva tagliato di
-   netto sotto le icone invece che con i puntini "…". Va sempre a capo
-   (invece di troncare con "…") così nome+squadra restano sempre leggibili
-   per intero, su una seconda riga se serve, senza spingere le icone. */
+/* Nome e squadra sono due righe SEPARATE (non un unico testo che va a capo
+   dove capita, tagliando in mezzo a "squadra Rosso +\nGiallo") — così la
+   squadra sta sempre per intero sulla riga sotto il nome, mai spezzata. */
 .top-bar-me-text {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.top-bar-me-name {
   white-space: normal;
   word-break: break-word;
 }
-.top-bar-me .swatch { flex-shrink: 0; }
+.top-bar-me-team {
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--muted-3);
+  white-space: normal;
+  word-break: break-word;
+}
+.top-bar-me .swatch { flex-shrink: 0; margin-top: 3px; }
 .top-bar-room {
   white-space: nowrap;
   overflow: hidden;
@@ -4124,7 +4141,7 @@ function renderPawns(svg, board, pawns, lastSwap, lastCapture, lastHomeEntry) {
 // Bumped by hand each time a new build is produced — shown in the lobby so
 // it's obvious at a glance whether you're on the latest version, instead
 // of guessing from a stale browser tab or cache.
-const APP_VERSION = "v4.9";
+const APP_VERSION = "v4.10";
 
 let myColor = null;
 let myRoomId = null;
@@ -4811,36 +4828,75 @@ async function joinManualRoom(roomId) {
   stopLobbyListener();
 
   const ref = roomRef(roomId);
-  const snap = await ref.get();
   const claimToken = getOrCreateClaimToken(roomId, myColor);
 
-  if (!snap.exists()) {
-    const players = {};
-    players[myColor] = { name: myName, token: claimToken };
-    const state = newGameState(players, "manual");
-    await writeState(roomId, state);
-  } else {
-    const existing = snap.val().players && snap.val().players[myColor];
-    const sameName = existing && existing.name && myName &&
-      existing.name.trim().toLowerCase() === myName.trim().toLowerCase();
-    if (existing && existing.token && existing.token !== claimToken && !sameName) {
-      alert(`Il colore ${colorLabel(myColor)} è già stato scelto da ${existing.name || colorLabel(myColor)} in questa stanza. Scegline un altro, oppure rientra usando esattamente lo stesso nome per riprenderlo.`);
-      return;
-    }
-    // Due colori diversi con lo stesso nome mandano in confusione il
-    // rientro-per-nome più avanti (non saprebbe a quale colore restituire
-    // il posto), quindi lo blocchiamo già qui.
-    const otherPlayers = snap.val().players || {};
-    const nameTakenElsewhere = COLORS.some((c) => {
-      if (c === myColor) return false;
-      const p = otherPlayers[c];
-      return p && p.name && myName && p.name.trim().toLowerCase() === myName.trim().toLowerCase();
+  // Tutto dentro UNA transazione (leggi-controlla-scrivi atomico), non più
+  // un get() seguito da un set() separato: quel prima/dopo lasciava una
+  // finestra in cui due telefoni potevano leggere "colore libero"
+  // entrambi PRIMA che uno dei due avesse scritto, e finire entrambi nello
+  // stesso colore (bug segnalato). Stesso motivo per cui updateState (le
+  // mosse in partita) usa già una transazione.
+  let blockedReason = null; // {kind:"color", by} | {kind:"name"} | null
+  let caughtError = null;
+  const result = await ref
+    .transaction((current) => {
+      blockedReason = null;
+      try {
+        if (current === null) {
+          const players = {};
+          players[myColor] = { name: myName, token: claimToken };
+          return newGameState(players, "manual");
+        }
+        const state = normalizeState(JSON.parse(JSON.stringify(current)));
+        const existing = state.players && state.players[myColor];
+        const sameName = existing && existing.name && myName &&
+          existing.name.trim().toLowerCase() === myName.trim().toLowerCase();
+        if (existing && existing.token && existing.token !== claimToken && !sameName) {
+          blockedReason = { kind: "color", by: existing.name || colorLabel(myColor) };
+          return undefined; // annulla il tentativo, non scrivere nulla
+        }
+        // Due colori diversi con lo stesso nome mandano in confusione il
+        // rientro-per-nome più avanti (non saprebbe a quale colore restituire
+        // il posto), quindi lo blocchiamo già qui.
+        const otherPlayers = state.players || {};
+        const nameTakenElsewhere = COLORS.some((c) => {
+          if (c === myColor) return false;
+          const p = otherPlayers[c];
+          return p && p.name && myName && p.name.trim().toLowerCase() === myName.trim().toLowerCase();
+        });
+        if (nameTakenElsewhere) {
+          blockedReason = { kind: "name" };
+          return undefined;
+        }
+        if (!state.players) state.players = {};
+        state.players[myColor] = { name: myName, token: claimToken };
+        return state;
+      } catch (e) {
+        caughtError = e;
+        return undefined;
+      }
+    })
+    .catch((e) => {
+      caughtError = e;
+      return null;
     });
-    if (nameTakenElsewhere) {
-      alert(`Il nome "${myName}" è già usato da un altro giocatore in questa stanza. Scegline uno diverso (es. aggiungi un'iniziale).`);
-      return;
-    }
-    await ref.child("players").child(myColor).set({ name: myName, token: claimToken });
+
+  if (blockedReason && blockedReason.kind === "color") {
+    alert(`Il colore ${colorLabel(myColor)} è già stato scelto da ${blockedReason.by} in questa stanza. Scegline un altro, oppure rientra usando esattamente lo stesso nome per riprenderlo.`);
+    return;
+  }
+  if (blockedReason && blockedReason.kind === "name") {
+    alert(`Il nome "${myName}" è già usato da un altro giocatore in questa stanza. Scegline uno diverso (es. aggiungi un'iniziale).`);
+    return;
+  }
+  if (caughtError) {
+    console.error("joinManualRoom error:", caughtError);
+    alert("Non è stato possibile entrare nella stanza. Riprova.");
+    return;
+  }
+  if (!result || result.committed === false) {
+    alert("Non è stato possibile entrare nella stanza (richiesta non completata). Riprova.");
+    return;
   }
 
   // (l'ascolto della lobby è già stato staccato in cima alla funzione)
@@ -5377,7 +5433,12 @@ function renderGameShell() {
             "div",
             { class: "top-bar-me" },
             swatchDot(myColor),
-            el("span", { class: "top-bar-me-text" }, `${myName} · squadra ${TEAM_LABEL[TEAM_OF[myColor]]}`)
+            el(
+              "div",
+              { class: "top-bar-me-text" },
+              el("div", { class: "top-bar-me-name" }, myName),
+              el("div", { class: "top-bar-me-team" }, `squadra ${TEAM_LABEL[TEAM_OF[myColor]]}`)
+            )
           )
         ),
         el(
@@ -6580,7 +6641,16 @@ function renderExchangeControls(state) {
           : el("p", { style: "font-weight:700;font-size:0.82rem;margin-top:10px;" }, "Tutti pronti, avvio in corso...")
       ),
       already
-        ? el("p", { class: "muted" }, "✅ Hai già scelto la tua carta. In attesa degli altri...")
+        ? el(
+            "p",
+            { class: "muted exchange-done-line" },
+            el(
+              "span",
+              { class: "exchange-done-badge" },
+              svgIcon(11, 11, "0 0 24 24", "#FFFFFF", 3, [["polyline", { points: "4 12 9 17 20 6" }]])
+            ),
+            "Hai già scelto la tua carta. In attesa degli altri..."
+          )
         : [
             el("div", { class: "exchange-label" }, "Tocca la carta da dare"),
             el(
