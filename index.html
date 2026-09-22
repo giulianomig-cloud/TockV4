@@ -446,6 +446,7 @@ h1 { font-size: 1.4rem; margin: 0 0 4px; color: var(--ink); }
 .dealer-slot-label {
   font-weight: 700; font-size: 0.78rem; color: var(--muted-3);
   display: flex; align-items: center; gap: 5px;
+  flex-wrap: wrap; justify-content: center; text-align: center;
 }
 .dealer-slot-label .swatch { width: 8px; height: 8px; margin: 0; }
 .dealer-slot.dealer-winner .dealer-slot-label { font-weight: 800; color: var(--ink); }
@@ -605,15 +606,14 @@ button.danger:active {
    grezzo accanto al pallino) — su un contenitore flex, "text-overflow:
    ellipsis" messo sul flex container non funziona in modo affidabile: il
    testo lungo (es. un codice stanza scritto a caso) veniva tagliato di
-   netto sotto le icone invece che con i puntini "…". Qui invece lo span
-   si restringe (flex+min-width:0) e l'ellissi funziona sul vero
-   overflow del testo. */
+   netto sotto le icone invece che con i puntini "…". Va sempre a capo
+   (invece di troncare con "…") così nome+squadra restano sempre leggibili
+   per intero, su una seconda riga se serve, senza spingere le icone. */
 .top-bar-me-text {
   flex: 1;
   min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  word-break: break-word;
 }
 .top-bar-me .swatch { flex-shrink: 0; }
 .top-bar-room {
@@ -4124,7 +4124,7 @@ function renderPawns(svg, board, pawns, lastSwap, lastCapture, lastHomeEntry) {
 // Bumped by hand each time a new build is produced — shown in the lobby so
 // it's obvious at a glance whether you're on the latest version, instead
 // of guessing from a stale browser tab or cache.
-const APP_VERSION = "v4.8";
+const APP_VERSION = "v4.9";
 
 let myColor = null;
 let myRoomId = null;
@@ -6391,32 +6391,42 @@ function onStateChange(state) {
 // risultato viene applicato una volta sola.
 let dealerDrawAnimShown = { forRoom: null, done: false };
 
+// Mostrata come bottom sheet che sale da sotto (stesso openPicker/
+// closePicker usato per i picker del Jack/7/regole), non più come riquadro
+// fisso in mezzo alla pagina — su richiesta, coerente col resto dell'app.
 function renderDealerDrawScreen(state) {
-  const wrap = $("#dealer-draw-wrap");
-  if (!wrap) return;
-
   if (state.phase !== "dealerDraw" || !state.dealerDraw) {
-    wrap.innerHTML = "";
-    if (dealerDrawAnimShown.forRoom === myRoomId) dealerDrawAnimShown = { forRoom: null, done: false };
+    if (dealerDrawAnimShown.forRoom === myRoomId) {
+      dealerDrawAnimShown = { forRoom: null, done: false };
+      closePicker();
+      // riabilita la chiusura toccando fuori per gli altri picker (qui
+      // sotto viene disattivata: è una sequenza automatica, non annullabile)
+      const bd = document.getElementById("picker-backdrop");
+      if (bd) bd.onclick = closePicker;
+    }
     return;
   }
 
   if (dealerDrawAnimShown.forRoom === myRoomId) return; // già in corso o conclusa per questa stanza
 
   dealerDrawAnimShown = { forRoom: myRoomId, done: false };
-  wrap.innerHTML = "";
   const slotsByColor = {};
   const grid = el("div", { class: "dealer-draw-grid" });
   COLORS.forEach((c) => {
+    // Mostra anche il nome del giocatore (non solo il colore) — playerName
+    // ricade già da solo sul nome del colore se non c'è un nome impostato
+    // (es. posto libero improbabile qui, o un bot già rinominato "Bot X").
+    const name = playerName(state, c);
+    const label = name === colorLabel(c) ? colorLabel(c) : `${colorLabel(c)} · ${name}`;
     const slot = el(
       "div",
       { class: "dealer-slot", id: "dealer-slot-" + c },
-      el("div", { class: "dealer-slot-label" }, el("span", { class: "swatch swatch-" + c }), colorLabel(c))
+      el("div", { class: "dealer-slot-label" }, el("span", { class: "swatch swatch-" + c }), label)
     );
     slotsByColor[c] = slot;
     grid.appendChild(slot);
   });
-  wrap.appendChild(
+  openPicker(
     el(
       "div",
       { class: "lobby-card", style: "text-align:center;" },
@@ -6426,6 +6436,8 @@ function renderDealerDrawScreen(state) {
       el("div", { id: "dealer-draw-banner" })
     )
   );
+  const bd = ensurePickerBackdrop();
+  bd.onclick = null; // sequenza automatica: non si chiude toccando fuori
   animateDealerDraw(state.dealerDraw.sequence);
 }
 
