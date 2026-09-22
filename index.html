@@ -904,14 +904,30 @@ button.danger:active {
   overflow-y: auto;
   box-shadow: 0 -14px 32px rgba(36,28,21,0.28);
   animation: pickerSlideUp 0.22s ease-out;
+  /* Trascinando la maniglia (vedi setupPickerPeekDrag) il pannello scorre
+     verso il basso per "sbirciare" il tabellone sotto, senza perdere le
+     scelte già fatte — a differenza di "Annulla"/tap sullo sfondo, che
+     chiudono il picker per davvero. Durante il trascinamento la transizione
+     è disattivata via JS (deve seguire il dito 1:1); qui serve solo per lo
+     scatto morbido all'apertura/rilascio. */
+  transition: transform 0.25s cubic-bezier(0.2, 0.7, 0.3, 1);
 }
 @keyframes pickerSlideUp {
   from { opacity: 0; transform: translateY(18px); }
   to { opacity: 1; transform: translateY(0); }
 }
+/* Area toccabile allargata attorno alla maniglia (la sola barretta da 5px
+   sarebbe troppo piccola da afferrare col dito) — vedi openPicker. */
+.picker-handle-zone {
+  display: flex; justify-content: center; align-items: center;
+  padding: 6px 0 12px;
+  cursor: grab;
+  touch-action: none; /* il gesto verticale qui lo gestiamo noi (drag), non lo scroll del browser */
+}
+.picker-handle-zone:active { cursor: grabbing; }
 .picker-handle {
   width: 40px; height: 5px; border-radius: 999px;
-  background: var(--panel-border); margin: 2px auto 14px;
+  background: var(--panel-border);
 }
 .picker-overlay .choice-box {
   max-height: none;
@@ -2504,6 +2520,85 @@ function sevenHasAnyDistribution(state, color) {
       if (tryAmounts(combo, 7, 0, [])) return true;
     }
   }
+  // Anche una distribuzione "estesa" conta: se una parte del 7 basta a
+  // mandare TUTTE le proprie pedine a casa, i passi rimasti possono
+  // proseguire su quelle del compagno (vedi sevenValidateDistribution) — un
+  // 7 che sarebbe altrimenti "senza mosse legali" per il solo giocatore può
+  // comunque essere giocabile così, quindi va offerto come opzione.
+  return sevenHasAnyLeftoverToPartner(state, color);
+}
+
+// Genera TUTTE le possibili distribuzioni combinatorie (sottoinsieme +
+// ripartizione) di `total` passi sulle pedine indicate in `indices` — senza
+// ancora validarle contro il tabellone (percorsi bloccati, caselle-casa
+// occupate, ecc.). Fattorizzato fuori da sevenHasAnyDistribution/
+// botSevenDistributions così lo stesso generatore serve anche per il nuovo
+// caso "parte del 7 alle mie pedine, il resto al compagno".
+function sevenAllSplitsOfTotal(indices, total) {
+  const out = [];
+  if (!indices || indices.length === 0 || total <= 0) return out;
+  for (const idx of indices) out.push([{ pawnIndex: idx, steps: total }]);
+  function rec(pawnIndices, remaining, idx, acc) {
+    if (idx === pawnIndices.length - 1) {
+      if (remaining > 0) out.push(acc.concat([{ pawnIndex: pawnIndices[idx], steps: remaining }]));
+      return;
+    }
+    for (let s = 1; s < remaining; s++) {
+      rec(pawnIndices, remaining - s, idx + 1, acc.concat([{ pawnIndex: pawnIndices[idx], steps: s }]));
+    }
+  }
+  for (let size = 2; size <= indices.length; size++) {
+    for (const combo of kSubsets(indices, size)) rec(combo, total, 0, []);
+  }
+  return out;
+}
+
+// Da uno "snapshot" completo delle pedine (tutti e 4 i colori, es. dopo
+// aver già applicato parte di un 7 su qualcun altro), esiste un modo
+// legale di applicare `total` passi sulle pedine in gioco di `targetColor`?
+// Non richiede che finiscano tutte a casa — usata per verificare se il
+// COMPAGNO può davvero assorbire i passi avanzati di un 7 altrui.
+function sevenSplitValidatesFromSnapshot(pawnsSnapshot, targetColor, lappedFn, total) {
+  const inPlay = pawnsSnapshot[targetColor].map((p, i) => i).filter((i) => pawnsSnapshot[targetColor][i] !== -1);
+  if (inPlay.length === 0 || total <= 0) return false;
+  for (const dist of sevenAllSplitsOfTotal(inPlay, total)) {
+    for (const perm of permutations(dist)) {
+      const scratch = clonePawns(pawnsSnapshot);
+      let ok = true;
+      for (const { pawnIndex, steps } of perm) {
+        const pos = scratch[targetColor][pawnIndex];
+        if (pos === undefined || pos === -1) { ok = false; break; }
+        const path = sevenSinglePawnPath({ pawns: scratch }, targetColor, pos, steps, true, lappedFn(pawnIndex));
+        if (!path) { ok = false; break; }
+        landSevenPortion(scratch, targetColor, pawnIndex, path);
+      }
+      if (ok) return true;
+    }
+  }
+  return false;
+}
+
+// Esiste una ripartizione del 7 in cui una PARTE (1..6 passi) sulle proprie
+// pedine le manda TUTTE a casa, e i passi rimasti (7 meno quella parte)
+// possono davvero essere usati su almeno una pedina del compagno? Questa è
+// la regola: "se con l'ultima porzione di un 7 completo tutte le mie
+// pedine in casa, i passi avanzati proseguono sulle pedine del compagno con
+// cui inizio a muovere, visto che le mie sono tutte in casa".
+function sevenHasAnyLeftoverToPartner(state, color) {
+  const partner = PARTNER_OF[color];
+  const ownInPlay = state.pawns[color].map((p, i) => i).filter((i) => state.pawns[color][i] !== -1);
+  const partnerInPlay = state.pawns[partner].map((p, i) => i).filter((i) => state.pawns[partner][i] !== -1);
+  if (ownInPlay.length === 0 || partnerInPlay.length === 0) return false;
+  for (let ownTotal = 1; ownTotal <= 6; ownTotal++) {
+    const leftover = 7 - ownTotal;
+    for (const ownDist of sevenAllSplitsOfTotal(ownInPlay, ownTotal)) {
+      const ownResult = sevenValidateOwnPortions(state, color, ownDist);
+      if (!ownResult || !ownResult.allHome) continue;
+      if (sevenSplitValidatesFromSnapshot(ownResult.pawns, partner, (i) => hasLapped(state, partner, i), leftover)) {
+        return true;
+      }
+    }
+  }
   return false;
 }
 
@@ -2561,21 +2656,24 @@ function permutations(arr) {
   return out;
 }
 
-// Validates a distribution — [{pawnIndex, steps}, ...] summing to 7 — by
-// trying every ORDER the given portions could be resolved in (since which
-// pawn moves first can matter: it may vacate a cell or step off the base
-// for the next one). The player only picks how many steps each pawn
-// gets; the engine finds a working sequence if one exists.
-function sevenValidateDistribution(state, color, distribution) {
-  const ordered = distribution.filter((d) => d.steps > 0);
-  const total = ordered.reduce((s, d) => s + d.steps, 0);
-  if (total !== 7) return null;
-  if (ordered.length === 0) return null;
-
+// Prova ogni ORDINE possibile per la parte di distribuzione che tocca le
+// proprie pedine (`ownDistribution` — [{pawnIndex, steps}, ...], somma
+// libera, non necessariamente 7) e restituisce il primo ordine che
+// funziona: {order, paths, pawns, allHome}, dove `pawns` è lo snapshot
+// completo (tutti i colori) dopo quella parte e `allHome` dice se questo
+// ha mandato TUTTE le proprie 4 pedine a casa. null se nessun ordine è
+// legale. Factored out di sevenValidateDistribution così lo stesso
+// controllo serve anche per capire, in corso d'opera (splitter UI, bot),
+// se i passi rimasti di un 7 possono già proseguire sul compagno.
+function sevenValidateOwnPortions(state, color, ownDistribution) {
+  const ordered = (ownDistribution || []).filter((d) => d.steps > 0);
+  if (ordered.length === 0) {
+    return { order: [], paths: [], pawns: clonePawns(state.pawns), allHome: state.pawns[color].every((p) => p >= 1000) };
+  }
   for (const perm of permutations(ordered)) {
     const scratch = clonePawns(state.pawns);
-    const result = {};
     const order = [];
+    const paths = [];
     let ok = true;
     for (const { pawnIndex, steps } of perm) {
       const pos = scratch[color][pawnIndex];
@@ -2583,51 +2681,113 @@ function sevenValidateDistribution(state, color, distribution) {
       const path = sevenSinglePawnPath({ pawns: scratch }, color, pos, steps, true, hasLapped(state, color, pawnIndex));
       if (!path) { ok = false; break; }
       landSevenPortion(scratch, color, pawnIndex, path);
-      result[pawnIndex] = path;
-      order.push(pawnIndex);
+      order.push({ color, pawnIndex });
+      paths.push(path);
     }
     if (ok) {
-      result.__order = order;
-      return result;
+      return { order, paths, pawns: scratch, allHome: scratch[color].every((p) => p >= 1000) };
     }
   }
   return null;
 }
 
+// Validates a distribution — [{pawnIndex, steps, forPartner?}, ...] summing
+// to 7 — by trying every ORDER the given portions could be resolved in
+// (since which pawn moves first can matter: it may vacate a cell or step
+// off the base for the next one). The player only picks how many steps
+// each pawn gets; the engine finds a working sequence if one exists.
+//
+// `forPartner: true` marks a portion that moves one of the PARTNER's
+// pawns instead of the acting player's own — only legal for the portions
+// that come AFTER every one of the acting player's own pawns has already
+// been sent home by an earlier portion of this same 7 (regola: se durante
+// un 7 tutte le proprie pedine finiscono in casa, i passi avanzati
+// proseguono sulle pedine del compagno, visto che le proprie sono finite —
+// lo stesso concetto di activeColorFor applicato a metà di una giocata di
+// 7, non solo a inizio turno).
+function sevenValidateDistribution(state, color, distribution) {
+  const ordered = distribution.filter((d) => d.steps > 0);
+  const total = ordered.reduce((s, d) => s + d.steps, 0);
+  if (total !== 7) return null;
+  if (ordered.length === 0) return null;
+
+  const partner = PARTNER_OF[color];
+  const ownPortions = ordered.filter((d) => !d.forPartner);
+  const partnerPortions = ordered.filter((d) => d.forPartner);
+  // Passi del compagno senza aver prima mandato a casa le proprie pedine
+  // con QUESTO 7 non hanno senso qui: se le proprie pedine erano già tutte
+  // a casa PRIMA di giocare la carta, chi gioca è già il compagno stesso
+  // (vedi activeColorFor) — quel caso passa già dal percorso normale.
+  if (partnerPortions.length > 0 && ownPortions.length === 0) return null;
+
+  const ownResult = sevenValidateOwnPortions(state, color, ownPortions);
+  if (!ownResult) return null;
+  if (partnerPortions.length === 0) {
+    return { order: ownResult.order, paths: ownResult.paths };
+  }
+  if (!ownResult.allHome) return null; // i passi passano al compagno solo quando la propria squadra è già tutta in casa
+
+  for (const perm of permutations(partnerPortions)) {
+    const scratch = clonePawns(ownResult.pawns);
+    const order = ownResult.order.slice();
+    const paths = ownResult.paths.slice();
+    let ok = true;
+    for (const { pawnIndex, steps } of perm) {
+      const pos = scratch[partner][pawnIndex];
+      if (pos === undefined || pos === -1) { ok = false; break; }
+      const path = sevenSinglePawnPath({ pawns: scratch }, partner, pos, steps, true, hasLapped(state, partner, pawnIndex));
+      if (!path) { ok = false; break; }
+      landSevenPortion(scratch, partner, pawnIndex, path);
+      order.push({ color: partner, pawnIndex });
+      paths.push(path);
+    }
+    if (ok) return { order, paths };
+  }
+  return null;
+}
+
 function applySevenDistribution(state, color, distribution) {
-  const paths = sevenValidateDistribution(state, color, distribution);
-  if (!paths) throw new Error("distribuzione del 7 non valida");
-  const order = paths.__order;
+  const validated = sevenValidateDistribution(state, color, distribution);
+  if (!validated) throw new Error("distribuzione del 7 non valida");
+  const { order, paths } = validated;
   const moves = [];
-  // Una porzione per ogni pedina toccata dal 7 (fino a 4) — servono TUTTE,
+  // Una porzione per ogni pedina toccata dal 7 (fino a 4, ora eventualmente
+  // anche del compagno — vedi sevenValidateDistribution) — servono TUTTE,
   // non solo l'ultima, per poter "rivedere" l'intera giocata (vedi
   // recordLastSeven/flashSevenReplay): un semplice recordLastMove per
   // porzione veniva sovrascritto a ogni giro, quindi il replay a comando
   // mostrava solo l'ultima pedina mossa, come se le altre non si fossero
   // mai spostate.
   const portions = [];
-  for (const pawnIndex of order) {
-    const path = paths[pawnIndex];
+  for (let i = 0; i < order.length; i++) {
+    const pc = order[i].color; // colore della pedina toccata da QUESTA porzione (può differire da `color` se è del compagno)
+    const pawnIndex = order[i].pawnIndex;
+    const path = paths[i];
     const dest = path[path.length - 1];
-    const oldPos = state.pawns[color][pawnIndex];
+    const oldPos = state.pawns[pc][pawnIndex];
     // capture EVERY pawn found anywhere along this portion's path, not
     // just at the final resting cell — the 7 keeps going after eating.
     for (const cell of path) {
       if (cell >= 1000) continue;
       const occ = occupantAt(state, cell);
       if (occ) {
-        recordCapture(state, occ, cell, color);
-        state.log.push(`${cn(color)} mangia ${cn(occ.color)} con parte del 7.`);
+        recordCapture(state, occ, cell, pc);
+        state.log.push(`${cn(pc)} mangia ${cn(occ.color)} con parte del 7.`);
       }
     }
-    state.pawns[color][pawnIndex] = dest;
-    if (oldPos < 1000 && dest >= 1000) recordHomeEntry(state, color, pawnIndex, dest);
-    setLapped(state, color, pawnIndex, dest < 1000 && dest === BOARD.baseIndex[color]);
-    moves.push(`#${pawnIndex + 1} ${posLabel(color, oldPos)}→${posLabel(color, dest)}`);
-    portions.push({ pawnIndex, from: oldPos, path: path.slice() });
+    state.pawns[pc][pawnIndex] = dest;
+    if (oldPos < 1000 && dest >= 1000) recordHomeEntry(state, pc, pawnIndex, dest);
+    setLapped(state, pc, pawnIndex, dest < 1000 && dest === BOARD.baseIndex[pc]);
+    const label = pc === color ? `#${pawnIndex + 1}` : `${cn(pc)}#${pawnIndex + 1}`;
+    moves.push(`${label} ${posLabel(pc, oldPos)}→${posLabel(pc, dest)}`);
+    portions.push({ pawnIndex, from: oldPos, path: path.slice(), color: pc });
   }
   recordLastSeven(state, color, portions);
-  state.log.push(`${cn(color)} gioca il 7 (${moves.join("; ")}).`);
+  const usedPartner = portions.some((p) => p.color !== color);
+  const tail = usedPartner
+    ? ` (${cn(color)} finisce in casa a metà 7: il resto continua sulle pedine di ${cn(PARTNER_OF[color])})`
+    : "";
+  state.log.push(`${cn(color)} gioca il 7 (${moves.join("; ")}).${tail}`);
   checkWin(state);
 }
 
@@ -3684,16 +3844,21 @@ function flashSevenReplay(svg, board, color, portions) {
   const runPortion = () => {
     if (replayAnimSeq !== myGen) return;
     if (portionIdx >= portions.length) return;
-    const { from, path } = portions[portionIdx];
+    const { from, path, color: portionColor } = portions[portionIdx];
+    // Una porzione del 7 può appartenere al compagno (vedi
+    // sevenValidateDistribution/applySevenDistribution) — le caselle-casa
+    // sono relative al colore, quindi cellForColor va chiamata con il
+    // colore DI QUESTA porzione, non con quello di chi ha giocato la carta.
+    const pColor = portionColor || color;
     if (from == null || from < 0 || !path || path.length === 0) {
       portionIdx++;
       runPortion();
       return;
     }
-    const startCell = cellForColor(board, color, from);
+    const startCell = cellForColor(board, pColor, from);
     const startMarker = ns_el("circle", {
       cx: startCell.x, cy: startCell.y, r: R * 0.95,
-      fill: "none", stroke: BASE_COL[color], "stroke-width": 3,
+      fill: "none", stroke: BASE_COL[pColor], "stroke-width": 3,
       "stroke-dasharray": "3,3", opacity: 0.9,
     });
     startMarker.setAttribute("class", "replay-start-marker");
@@ -3703,7 +3868,7 @@ function flashSevenReplay(svg, board, color, portions) {
     ghost.setAttribute("class", "replay-ghost-pawn");
     const circle = ns_el("circle", {
       cx: 0, cy: 0, r: R * 0.85,
-      fill: BASE_COL[color], stroke: "#fffefb", "stroke-width": 2.5, opacity: 0.85,
+      fill: BASE_COL[pColor], stroke: "#fffefb", "stroke-width": 2.5, opacity: 0.85,
     });
     ghost.appendChild(circle);
     ghost.setAttribute("transform", `translate(${startCell.x},${startCell.y})`);
@@ -3715,12 +3880,12 @@ function flashSevenReplay(svg, board, color, portions) {
       if (i >= path.length) {
         ghost.remove();
         startMarker.remove();
-        flashMoveHighlight(svg, board, color, path[path.length - 1]);
+        flashMoveHighlight(svg, board, pColor, path[path.length - 1]);
         portionIdx++;
         setTimeout(runPortion, gapBetweenPortions);
         return;
       }
-      const cell = cellForColor(board, color, path[i]);
+      const cell = cellForColor(board, pColor, path[i]);
       ghost.setAttribute("transform", `translate(${cell.x},${cell.y})`);
       i++;
       setTimeout(step, stepMs);
@@ -4145,7 +4310,7 @@ function renderPawns(svg, board, pawns, lastSwap, lastCapture, lastHomeEntry) {
 // Bumped by hand each time a new build is produced — shown in the lobby so
 // it's obvious at a glance whether you're on the latest version, instead
 // of guessing from a stale browser tab or cache.
-const APP_VERSION = "v4.12";
+const APP_VERSION = "v4.13";
 
 let myColor = null;
 let myRoomId = null;
@@ -6264,24 +6429,58 @@ function botCandidatesForCard(state, active, card) {
 function botSevenDistributions(state, color) {
   const inPlay = state.pawns[color].map((p, i) => i).filter((i) => state.pawns[color][i] !== -1);
   const results = [];
-  if (inPlay.length === 0) return results;
-  for (const idx of inPlay) {
-    const dist = [{ pawnIndex: idx, steps: 7 }];
-    if (sevenValidateDistribution(state, color, dist)) results.push(dist);
-  }
-  function tryAmounts(pawnIndices, remaining, idx, acc) {
-    if (idx === pawnIndices.length - 1) {
-      if (remaining <= 0) return;
-      const dist = acc.concat([{ pawnIndex: pawnIndices[idx], steps: remaining }]);
+  if (inPlay.length > 0) {
+    for (const idx of inPlay) {
+      const dist = [{ pawnIndex: idx, steps: 7 }];
       if (sevenValidateDistribution(state, color, dist)) results.push(dist);
-      return;
     }
-    for (let s = 1; s < remaining; s++) {
-      tryAmounts(pawnIndices, remaining - s, idx + 1, acc.concat([{ pawnIndex: pawnIndices[idx], steps: s }]));
+    function tryAmounts(pawnIndices, remaining, idx, acc) {
+      if (idx === pawnIndices.length - 1) {
+        if (remaining <= 0) return;
+        const dist = acc.concat([{ pawnIndex: pawnIndices[idx], steps: remaining }]);
+        if (sevenValidateDistribution(state, color, dist)) results.push(dist);
+        return;
+      }
+      for (let s = 1; s < remaining; s++) {
+        tryAmounts(pawnIndices, remaining - s, idx + 1, acc.concat([{ pawnIndex: pawnIndices[idx], steps: s }]));
+      }
+    }
+    for (let size = 2; size <= inPlay.length; size++) {
+      for (const combo of kSubsets(inPlay, size)) tryAmounts(combo, 7, 0, []);
     }
   }
-  for (let size = 2; size <= inPlay.length; size++) {
-    for (const combo of kSubsets(inPlay, size)) tryAmounts(combo, 7, 0, []);
+  // Distribuzioni "estese": una parte manda tutte le proprie pedine a casa,
+  // il resto prosegue su quelle del compagno (vedi sevenValidateDistribution
+  // / sevenHasAnyLeftoverToPartner) — esplorate solo quando è davvero
+  // possibile, per non pagare questo costo combinatorio extra sulla
+  // stragrande maggioranza dei turni.
+  if (sevenHasAnyLeftoverToPartner(state, color)) {
+    results.push(...botExtendedSevenDistributions(state, color));
+  }
+  return results;
+}
+
+// Genera le distribuzioni estese vere e proprie: per ogni possibile "parte
+// propria" (1..6 passi) che manda tutte le proprie pedine a casa, prova
+// ogni possibile ripartizione dei passi rimasti sulle pedine in gioco del
+// compagno, tenendo solo le combinazioni che superano la validazione
+// completa (percorsi, caselle-casa occupate, ecc.).
+function botExtendedSevenDistributions(state, color) {
+  const partner = PARTNER_OF[color];
+  const ownInPlay = state.pawns[color].map((p, i) => i).filter((i) => state.pawns[color][i] !== -1);
+  const partnerInPlay = state.pawns[partner].map((p, i) => i).filter((i) => state.pawns[partner][i] !== -1);
+  const results = [];
+  if (ownInPlay.length === 0 || partnerInPlay.length === 0) return results;
+  for (let ownTotal = 1; ownTotal <= 6; ownTotal++) {
+    const leftover = 7 - ownTotal;
+    for (const ownDist of sevenAllSplitsOfTotal(ownInPlay, ownTotal)) {
+      const ownResult = sevenValidateOwnPortions(state, color, ownDist);
+      if (!ownResult || !ownResult.allHome) continue;
+      for (const partnerDist of sevenAllSplitsOfTotal(partnerInPlay, leftover)) {
+        const full = ownDist.concat(partnerDist.map((d) => ({ pawnIndex: d.pawnIndex, steps: d.steps, forPartner: true })));
+        if (sevenValidateDistribution(state, color, full)) results.push(full);
+      }
+    }
   }
   return results;
 }
@@ -7128,7 +7327,13 @@ async function onCardClick(card, evt) {
       .map((p, i) => i)
       .filter((i) => currentState.pawns[active][i] !== -1)
       .filter((i) => sevenPawnCanReceiveSteps(currentState, active, i));
-    if (eligible.length === 1) {
+    // Se è possibile che questo 7 mandi tutte le proprie pedine a casa a
+    // metà giocata e proseguire coi passi rimasti sul compagno (vedi
+    // sevenHasAnyLeftoverToPartner), c'è sempre una vera scelta da fare
+    // (quanti passi tenere per sé, quale pedina del compagno usare per il
+    // resto) — quindi non si salta mai lo splitter in quel caso.
+    const leftoverPossible = sevenHasAnyLeftoverToPartner(currentState, active);
+    if (!leftoverPossible && eligible.length === 1) {
       await playMove(active, card, { type: "seven", distribution: [{ pawnIndex: eligible[0], steps: 7 }] });
       return;
     }
@@ -7151,7 +7356,20 @@ function ensurePickerBackdrop() {
     bd = document.createElement("div");
     bd.id = "picker-backdrop";
     bd.className = "picker-backdrop";
-    bd.onclick = closePicker;
+    // Se il pannello è "sbirciato" (trascinato in basso per vedere il
+    // tabellone, vedi setupPickerPeekDrag), un tocco sullo sfondo lo
+    // riporta semplicemente su — non lo chiude per davvero, altrimenti si
+    // perderebbero le scelte già fatte solo per aver dato un'occhiata al
+    // tabellone. Chiude/annulla solo quando il pannello è già a tutta
+    // altezza, come prima.
+    bd.onclick = () => {
+      const wrap = document.getElementById("picker-wrap");
+      if (wrap && wrap.classList.contains("picker-peeked")) {
+        setPickerPeeked(false);
+      } else {
+        closePicker();
+      }
+    };
     document.body.appendChild(bd);
   }
   return bd;
@@ -7193,22 +7411,103 @@ function unlockBodyScroll() {
   window.scrollTo(0, y);
 }
 
+// Quanto resta visibile del pannello (giusto la maniglia, per poterlo
+// riafferrare) quando viene trascinato in basso per "sbirciare" il
+// tabellone sotto — vedi setupPickerPeekDrag/setPickerPeeked.
+const PICKER_PEEK_VISIBLE_PX = 54;
+
 function openPicker(contentEl) {
   const wrap = $("#picker-wrap");
   wrap.innerHTML = "";
   wrap.className = "picker-overlay";
-  wrap.appendChild(el("div", { class: "picker-handle" }));
+  wrap.style.transform = ""; // azzera un'eventuale "sbirciata" rimasta da un picker precedente
+  const handleZone = el("div", { class: "picker-handle-zone" }, el("div", { class: "picker-handle" }));
+  wrap.appendChild(handleZone);
   wrap.appendChild(contentEl);
-  ensurePickerBackdrop().classList.add("show");
+  const bd = ensurePickerBackdrop();
+  bd.classList.add("show");
+  bd.style.opacity = "";
   lockBodyScroll();
+  setupPickerPeekDrag(wrap, handleZone);
 }
 function closePicker() {
   const wrap = $("#picker-wrap");
   wrap.innerHTML = "";
   wrap.className = "";
+  wrap.style.transform = "";
   const bd = document.getElementById("picker-backdrop");
-  if (bd) bd.classList.remove("show");
+  if (bd) {
+    bd.classList.remove("show");
+    bd.style.opacity = "";
+  }
   unlockBodyScroll();
+}
+
+// Mette (o toglie) il pannello in modalità "sbirciata": scorre quasi del
+// tutto fuori dallo schermo, lasciando visibile solo la maniglia, per dare
+// un'occhiata al tabellone sotto senza chiudere il picker e senza perdere
+// le scelte già fatte (es. un'allocazione del 7 a metà). Lo sfondo scurito
+// si schiarisce di conseguenza, così il tabellone si vede davvero.
+function setPickerPeeked(peeked) {
+  const wrap = document.getElementById("picker-wrap");
+  const bd = document.getElementById("picker-backdrop");
+  if (!wrap || !wrap.classList.contains("picker-overlay")) return;
+  const sheetHeight = wrap.getBoundingClientRect().height;
+  const maxTranslate = Math.max(0, sheetHeight - PICKER_PEEK_VISIBLE_PX);
+  wrap.classList.toggle("picker-peeked", peeked);
+  wrap.style.transform = peeked ? `translateY(${maxTranslate}px)` : "";
+  if (bd) bd.style.opacity = peeked ? "0.12" : "";
+}
+
+// Gesto di trascinamento sulla maniglia del picker: segue il dito 1:1
+// mentre si trascina (transizione disattivata), e al rilascio scatta o
+// nella posizione "sbirciata" (tabellone visibile) o torna su, a seconda
+// di quanto si era trascinato — un semplice tocco sulla maniglia (senza
+// trascinare) alterna semplicemente le due posizioni.
+function setupPickerPeekDrag(wrap, handleZone) {
+  let dragging = false;
+  let startY = 0;
+  let startTranslate = 0;
+  let maxTranslate = 0;
+
+  const onDown = (evt) => {
+    dragging = true;
+    startY = evt.clientY;
+    const sheetHeight = wrap.getBoundingClientRect().height;
+    maxTranslate = Math.max(0, sheetHeight - PICKER_PEEK_VISIBLE_PX);
+    startTranslate = wrap.classList.contains("picker-peeked") ? maxTranslate : 0;
+    wrap.style.transition = "none";
+    if (handleZone.setPointerCapture) {
+      try { handleZone.setPointerCapture(evt.pointerId); } catch (e) {}
+    }
+  };
+  const onMove = (evt) => {
+    if (!dragging) return;
+    const next = Math.min(maxTranslate, Math.max(0, startTranslate + (evt.clientY - startY)));
+    wrap.style.transform = `translateY(${next}px)`;
+    const bd = document.getElementById("picker-backdrop");
+    if (bd && maxTranslate > 0) bd.style.opacity = String(1 - (next / maxTranslate) * 0.88);
+    evt.preventDefault();
+  };
+  const onUp = (evt) => {
+    if (!dragging) return;
+    dragging = false;
+    wrap.style.transition = "";
+    const delta = evt.clientY - startY;
+    const wasPeeked = startTranslate > 0;
+    // Un tocco senza vero trascinamento alterna semplicemente le due
+    // posizioni, invece di ricadere nel calcolo-soglia sotto (che con
+    // delta≈0 partendo da "sbirciato" lascerebbe erroneamente il pannello
+    // giù anche per un tap distratto).
+    const isTap = Math.abs(delta) < 6;
+    const shouldPeek = isTap ? !wasPeeked : Math.min(maxTranslate, Math.max(0, startTranslate + delta)) > maxTranslate * 0.3;
+    setPickerPeeked(shouldPeek);
+  };
+
+  handleZone.addEventListener("pointerdown", onDown);
+  handleZone.addEventListener("pointermove", onMove);
+  handleZone.addEventListener("pointerup", onUp);
+  handleZone.addEventListener("pointercancel", onUp);
 }
 
 // ---- Regolamento richiamabile in partita --------------------------------
@@ -7506,23 +7805,84 @@ function sevenRowLabel(pos) {
   return "In gioco → prosegue";
 }
 
+// sevenAllocation è tenuta come mappa piatta "colore:pawnIndex" -> passi,
+// così una riga della propria squadra e una del compagno con lo stesso
+// pawnIndex (0..3) non si confondono mai (i colori dei due possibili
+// bersagli sono sempre diversi tra loro).
+function sevenAllocKey(color, pawnIndex) {
+  return color + ":" + pawnIndex;
+}
+
 function openSevenSplitter(active, card) {
   // Non proporre pedine già in gioco che in realtà non potrebbero ricevere
   // nemmeno un passo in NESSUNA distribuzione valida (bloccate da una
   // propria pedina davanti, o a fine percorso-casa) — altrimenti lo
-  // splitter mostra righe che sembrano un'opzione ma non lo sono mai.
-  const pawns = currentState.pawns[active]
-    .map((p, i) => ({ pawnIndex: i, pos: p }))
+  // splitter mostra righe che sembrano un'opzione ma non lo sono mai. Se
+  // però questo 7 può mandare tutte le proprie pedine a casa a metà
+  // giocata e proseguire sul compagno, mostra comunque tutte le proprie
+  // pedine in gioco: la combinazione esatta la verifica comunque il tasto
+  // "Conferma" (vedi confirmSeven).
+  const leftoverPossible = sevenHasAnyLeftoverToPartner(currentState, active);
+  const ownPawns = currentState.pawns[active]
+    .map((p, i) => ({ pawnIndex: i, pos: p, color: active }))
     .filter((x) => x.pos !== -1)
-    .filter((x) => sevenPawnCanReceiveSteps(currentState, active, x.pawnIndex));
+    .filter((x) => leftoverPossible || sevenPawnCanReceiveSteps(currentState, active, x.pawnIndex));
   sevenAllocation = {};
-  pawns.forEach((p) => (sevenAllocation[p.pawnIndex] = 0));
-  renderSevenSplitter(active, card, pawns);
+  ownPawns.forEach((p) => (sevenAllocation[sevenAllocKey(p.color, p.pawnIndex)] = 0));
+  renderSevenSplitter(active, card, ownPawns);
 }
 
-function renderSevenSplitter(active, card, pawns) {
+function renderSevenSplitter(active, card, ownPawns) {
+  const partner = PARTNER_OF[active];
+
+  // Quanti passi sono già assegnati alle proprie pedine in questo momento?
+  const ownDist = ownPawns
+    .map((p) => ({ pawnIndex: p.pawnIndex, steps: sevenAllocation[sevenAllocKey(active, p.pawnIndex)] || 0 }))
+    .filter((d) => d.steps > 0);
+  const ownTotal = ownDist.reduce((s, d) => s + d.steps, 0);
+
+  // Se l'allocazione attuale sulle proprie pedine le manda TUTTE a casa, i
+  // passi rimasti del 7 possono proseguire sulle pedine del compagno (vedi
+  // sevenValidateDistribution) — a quel punto si aprono anche le sue righe.
+  let partnerPawns = [];
+  if (ownTotal > 0 && ownTotal < 7) {
+    const ownResult = sevenValidateOwnPortions(currentState, active, ownDist);
+    if (ownResult && ownResult.allHome) {
+      partnerPawns = currentState.pawns[partner]
+        .map((p, i) => ({ pawnIndex: i, pos: p, color: partner }))
+        .filter((x) => x.pos !== -1);
+    }
+  }
+  // Ripulisce eventuali passi lasciati sul compagno da un'allocazione
+  // precedente che ora non lo rende più raggiungibile (l'utente ha tolto
+  // passi alle proprie pedine).
+  for (const key of Object.keys(sevenAllocation)) {
+    if (key.startsWith(partner + ":") && !partnerPawns.some((p) => sevenAllocKey(p.color, p.pawnIndex) === key)) {
+      delete sevenAllocation[key];
+    }
+  }
+  partnerPawns.forEach((p) => {
+    const key = sevenAllocKey(p.color, p.pawnIndex);
+    if (!(key in sevenAllocation)) sevenAllocation[key] = 0;
+  });
+
   const total = Object.values(sevenAllocation).reduce((a, b) => a + b, 0);
   const remaining = 7 - total;
+
+  const row = (p) => {
+    const key = sevenAllocKey(p.color, p.pawnIndex);
+    const val = sevenAllocation[key] || 0;
+    return el(
+      "div",
+      { class: "seven-row" + (val > 0 ? " has-steps" : "") },
+      pipIcon(p.color, p.pawnIndex, 34),
+      el("div", { class: "seven-row-text" }, sevenRowLabel(p.pos)),
+      el("button", { class: "seven-step-btn", onclick: () => adjustSeven(active, card, ownPawns, p.color, p.pawnIndex, -1) }, "−"),
+      el("span", { class: "seven-val" }, String(val)),
+      el("button", { class: "seven-step-btn", onclick: () => adjustSeven(active, card, ownPawns, p.color, p.pawnIndex, 1) }, "+")
+    );
+  };
+
   openPicker(
     el(
       "div",
@@ -7538,17 +7898,15 @@ function renderSevenSplitter(active, card, pawns) {
         { class: "seven-pips" },
         Array.from({ length: 7 }, (_, i) => el("span", { class: "seven-pip" + (i < total ? " filled" : "") }))
       ),
-      pawns.map((p) =>
-        el(
-          "div",
-          { class: "seven-row" + (sevenAllocation[p.pawnIndex] > 0 ? " has-steps" : "") },
-          pipIcon(active, p.pawnIndex, 34),
-          el("div", { class: "seven-row-text" }, sevenRowLabel(p.pos)),
-          el("button", { class: "seven-step-btn", onclick: () => adjustSeven(active, card, pawns, p.pawnIndex, -1) }, "−"),
-          el("span", { class: "seven-val" }, String(sevenAllocation[p.pawnIndex])),
-          el("button", { class: "seven-step-btn", onclick: () => adjustSeven(active, card, pawns, p.pawnIndex, 1) }, "+")
-        )
-      ),
+      ownPawns.map(row),
+      partnerPawns.length > 0
+        ? el(
+            "div",
+            { class: "muted", style: "font-size:0.78rem;font-weight:700;margin:8px 0 2px;" },
+            `Le tue pedine sono tutte in casa: continua con quelle di ${cn(partner)}`
+          )
+        : null,
+      partnerPawns.map(row),
       el(
         "button",
         {
@@ -7568,19 +7926,26 @@ function renderSevenSplitter(active, card, pawns) {
   );
 }
 
-function adjustSeven(active, card, pawns, pawnIndex, delta) {
+function adjustSeven(active, card, ownPawns, targetColor, pawnIndex, delta) {
   const total = Object.values(sevenAllocation).reduce((a, b) => a + b, 0);
-  const next = sevenAllocation[pawnIndex] + delta;
+  const key = sevenAllocKey(targetColor, pawnIndex);
+  const next = (sevenAllocation[key] || 0) + delta;
   if (next < 0) return;
   if (delta > 0 && total >= 7) return;
-  sevenAllocation[pawnIndex] = next;
-  renderSevenSplitter(active, card, pawns);
+  sevenAllocation[key] = next;
+  renderSevenSplitter(active, card, ownPawns);
 }
 
 async function confirmSeven(active, card) {
   keepAudioAlive();
+  const partner = PARTNER_OF[active];
   const distribution = Object.entries(sevenAllocation)
-    .map(([pawnIndex, steps]) => ({ pawnIndex: parseInt(pawnIndex, 10), steps }))
+    .map(([key, steps]) => {
+      const sep = key.indexOf(":");
+      const color = key.slice(0, sep);
+      const pawnIndex = parseInt(key.slice(sep + 1), 10);
+      return { pawnIndex, steps, forPartner: color === partner };
+    })
     .filter((d) => d.steps > 0);
   const valid = sevenValidateDistribution(currentState, active, distribution);
   if (!valid) {
