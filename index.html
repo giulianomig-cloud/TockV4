@@ -54,6 +54,7 @@ h1 { font-size: 1.4rem; margin: 0 0 4px; color: var(--ink); }
   color: #3B2A18;
   margin: 0;
 }
+.app-logo-squiggle { margin-top: 2px; display: block; }
 .app-logo-dots { display: flex; justify-content: space-between; margin-bottom: 5px; }
 .app-logo-dots span { border-radius: 50%; box-shadow: 0 2px 4px rgba(0,0,0,0.25); aspect-ratio: 1 / 1; }
 .app-logo-dots .ld-red { background: var(--red); }
@@ -70,6 +71,34 @@ h1 { font-size: 1.4rem; margin: 0 0 4px; color: var(--ink); }
   border-radius: 0;
   padding: 0;
   box-shadow: none;
+}
+
+/* Scambio alla cieca: qui il mockup (Scambio.dc.html) vuole INVECE una
+   card bianca a sé per l'intestazione/stato, diversa dalla sala d'attesa
+   — non riusa .start-card (ormai trasparente) ma una classe propria. */
+.exchange-card {
+  background: #FFFFFF;
+  border: 1px solid var(--panel-border);
+  border-radius: 18px;
+  padding: 18px;
+  margin-bottom: 18px;
+}
+.exchange-card p { margin: 0 0 6px; }
+.exchange-card p:last-child { margin-bottom: 0; }
+.exchange-pill-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 0.72rem; font-weight: 700; margin-top: 6px; }
+.exchange-pill-row:first-of-type { margin-top: 10px; }
+.exchange-pill-lead { color: var(--muted-3); }
+.exchange-pill-lead.done { color: #4E9770; }
+.exchange-pill {
+  display: inline-flex; align-items: center; gap: 4px;
+  border-radius: 999px; padding: 3px 9px 3px 6px;
+}
+.exchange-pill .swatch { width: 7px; height: 7px; margin: 0; }
+.exchange-pill.done { background: #E7F4EC; }
+.exchange-pill.waiting { background: #FBF1D8; }
+.exchange-label {
+  font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
+  color: var(--muted-3); margin-bottom: 10px;
 }
 
 /* Intestazione delle schermate di sala d'attesa: logo (pallini + scritta)
@@ -352,6 +381,7 @@ h1 { font-size: 1.4rem; margin: 0 0 4px; color: var(--ink); }
   font-weight: 700; font-size: 0.78rem; color: var(--muted-3);
   display: flex; align-items: center; gap: 5px;
 }
+.dealer-slot-label .swatch { width: 8px; height: 8px; margin: 0; }
 .dealer-slot.dealer-winner .dealer-slot-label { font-weight: 800; color: var(--ink); }
 .dealer-slot.dealer-winner {
   animation: teamReadyGlow 1s ease-in-out infinite;
@@ -844,6 +874,7 @@ button.secondary.selected {
   padding: 10px; cursor: pointer; text-align: left;
 }
 .jack-chip:hover { border-color: var(--gold); }
+.pawn-choice-chips { grid-template-columns: 1fr; margin-bottom: 14px; }
 .jack-chip span { font-size: 0.72rem; font-weight: 700; color: #5A5145; line-height: 1.3; }
 
 .teams-hint {
@@ -892,13 +923,22 @@ button.secondary.selected {
   max-height: 320px;
   overflow-y: auto;
 }
-.log-line { padding: 6px 0; border-bottom: 1px solid var(--panel-border); color: var(--muted-3); display: flex; align-items: flex-start; gap: 8px; }
-.log-line:last-child { border-bottom: none; }
-.log-dot {
-  width: 18px; height: 18px; border-radius: 50%; flex-shrink: 0; margin-top: 1px;
-  display: flex; align-items: center; justify-content: center;
+/* Timeline verticale (linea + pallini agganciati), come in Registro.dc.html
+   — non più righe separate da un bordo orizzontale con solo un puntino. */
+.log-timeline { position: relative; }
+.log-timeline::before {
+  content: ""; position: absolute; left: 10px; top: 6px; bottom: 6px; width: 2px;
+  background: var(--panel-border);
 }
-.log-dot::after { content: "•"; color: #fff; font-size: 10px; line-height: 1; }
+.log-line { padding-bottom: 16px; color: var(--muted-3); display: flex; align-items: flex-start; gap: 12px; position: relative; }
+.log-line:last-child { padding-bottom: 0; }
+.log-dot {
+  width: 21px; height: 21px; border-radius: 50%; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  z-index: 1; box-shadow: 0 0 0 3px #FFFFFF;
+}
+.log-text { padding-top: 2px; line-height: 1.4; }
+.log-text b { color: var(--ink); }
 .log-header {
   display: flex;
   justify-content: space-between;
@@ -1034,13 +1074,19 @@ button.secondary.selected {
 }
 @keyframes winFade { from { opacity: 0; } to { opacity: 1; } }
 .win-trophy {
-  font-size: 2.2rem; line-height: 1; margin: 0 auto 12px; width: 64px; height: 64px;
-  border-radius: 50%; background: linear-gradient(135deg, #F3D98A, #D9A93E);
+  line-height: 1; margin: 0 auto 16px; width: 62px; height: 62px;
+  border-radius: 50%; background: linear-gradient(160deg, #F3D98A, #C99A3A);
   display: flex; align-items: center; justify-content: center;
-  box-shadow: 0 8px 20px -8px rgba(180,130,20,0.55);
+  box-shadow: 0 8px 18px -8px rgba(180,130,20,0.6);
 }
+.win-eyebrow {
+  font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--muted-3); margin-bottom: 6px;
+}
+.win-team-dots { display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 6px; }
+.win-team-dots span { width: 14px; height: 14px; border-radius: 50%; display: inline-block; }
 .win-banner h2 { margin: 0 0 4px; font-size: 1.3rem; }
-.win-names { margin: 0; font-size: 0.95rem; opacity: 0.85; }
+.win-names { margin: 0 0 20px; font-size: 0.82rem; font-weight: 600; color: var(--muted-3); }
 @keyframes winPop {
   0% { transform: scale(0.6); opacity: 0; }
   70% { transform: scale(1.06); opacity: 1; }
@@ -2334,6 +2380,36 @@ function sevenHasAnyDistribution(state, color) {
   return false;
 }
 
+// Vero se esiste ALMENO UNA distribuzione valida del 7 in cui `pawnIndex`
+// riceve un numero di passi > 0 — usata per non proporre nello splitter
+// pedine che sono già bloccate/a fine percorso e non potrebbero comunque
+// muovere nemmeno un passo, qualunque combinazione si provi.
+function sevenPawnCanReceiveSteps(state, color, pawnIndex) {
+  const inPlay = state.pawns[color].map((p, i) => i).filter((i) => state.pawns[color][i] !== -1);
+  if (!inPlay.includes(pawnIndex)) return false;
+  if (sevenValidateDistribution(state, color, [{ pawnIndex, steps: 7 }])) return true;
+  const others = inPlay.filter((i) => i !== pawnIndex);
+  function tryAmounts(pawnIndices, remaining, idx, acc) {
+    if (idx === pawnIndices.length - 1) {
+      if (remaining <= 0) return false;
+      const dist = acc.concat([{ pawnIndex: pawnIndices[idx], steps: remaining }]);
+      return !!sevenValidateDistribution(state, color, dist);
+    }
+    for (let s = 1; s < remaining; s++) {
+      const dist = acc.concat([{ pawnIndex: pawnIndices[idx], steps: s }]);
+      if (tryAmounts(pawnIndices, remaining - s, idx + 1, dist)) return true;
+    }
+    return false;
+  }
+  for (let size = 0; size <= others.length; size++) {
+    for (const combo of kSubsets(others, size)) {
+      const group = [pawnIndex, ...combo];
+      if (tryAmounts(group, 7, 0, [])) return true;
+    }
+  }
+  return false;
+}
+
 function kSubsets(arr, k) {
   const out = [];
   function rec(start, chosen) {
@@ -3295,8 +3371,12 @@ function pipIcon(color, pawnIndex, size) {
   const r = size / 2;
   svg.appendChild(ns_el("circle", { cx: r, cy: r, r, fill: BASE_COL[color] }));
   const pipR = size * 0.09;
+  // dx/dy in PIP_LAYOUTS sono frazioni del RAGGIO (stessa convenzione di
+  // buildPawnGroup, che li applica come dx*capR) — usare `size` qui invece
+  // di `r` raddoppiava l'offset e faceva sforare i pallini d'angolo fuori
+  // dal cerchio colorato, con un effetto "morso" sul bordo.
   (PIP_LAYOUTS[pawnIndex] || PIP_LAYOUTS[0]).forEach(([dx, dy]) => {
-    svg.appendChild(ns_el("circle", { cx: r + dx * size, cy: r + dy * size, r: pipR, fill: "#FFFFFF" }));
+    svg.appendChild(ns_el("circle", { cx: r + dx * r, cy: r + dy * r, r: pipR, fill: "#FFFFFF" }));
   });
   return svg;
 }
@@ -3926,7 +4006,7 @@ function renderPawns(svg, board, pawns, lastSwap, lastCapture, lastHomeEntry) {
 // Bumped by hand each time a new build is produced — shown in the lobby so
 // it's obvious at a glance whether you're on the latest version, instead
 // of guessing from a stale browser tab or cache.
-const APP_VERSION = "v4.2";
+const APP_VERSION = "v4.3";
 
 let myColor = null;
 let myRoomId = null;
@@ -3966,7 +4046,7 @@ function el(tag, props, ...children) {
 // Piccola utilità per costruire icone SVG inline (nessuna libreria di icone,
 // solo path disegnati a mano come nei mockup) senza ripetere ogni volta il
 // boilerplate createElementNS.
-function svgIcon(width, height, viewBox, stroke, strokeWidth, shapes) {
+function svgIcon(width, height, viewBox, stroke, strokeWidth, shapes, className) {
   const ns = "http://www.w3.org/2000/svg";
   const svg = document.createElementNS(ns, "svg");
   svg.setAttribute("width", width);
@@ -3977,6 +4057,7 @@ function svgIcon(width, height, viewBox, stroke, strokeWidth, shapes) {
   svg.setAttribute("stroke-width", strokeWidth);
   svg.setAttribute("stroke-linecap", "round");
   svg.setAttribute("stroke-linejoin", "round");
+  if (className) svg.setAttribute("class", className);
   shapes.forEach(([tag, attrs]) => {
     const shape = document.createElementNS(ns, tag);
     Object.entries(attrs).forEach(([k, v]) => shape.setAttribute(k, v));
@@ -4030,7 +4111,10 @@ function renderLobby() {
           el("span", { class: "ld-red" }), el("span", { class: "ld-green" }),
           el("span", { class: "ld-yellow" }), el("span", { class: "ld-blue" })
         ),
-        el("h1", {}, "Tock")
+        el("h1", {}, "Tock"),
+        svgIcon("150", "16", "0 0 150 16", "#C99A3A", "4", [
+          ["path", { d: "M 4 8 Q 22 -2 40 8 T 76 8 T 112 8 T 146 8" }],
+        ], "app-logo-squiggle")
       ),
       el("p", { class: "muted" }, "Inserisci il codice stanza per creare o entrare in una partita."),
       roomInput,
@@ -4060,6 +4144,8 @@ function sizeLogoDotsToTitle() {
     s.style.width = d + "px";
     s.style.height = d + "px";
   });
+  const squiggle = document.querySelector(".app-logo-squiggle");
+  if (squiggle) squiggle.setAttribute("width", w);
 }
 
 // Link di invito diretto: chi lo apre arriva già con il codice stanza
@@ -6168,7 +6254,7 @@ function renderDealerDrawScreen(state) {
     const slot = el(
       "div",
       { class: "dealer-slot", id: "dealer-slot-" + c },
-      el("div", { class: "dealer-slot-label" }, colorLabel(c))
+      el("div", { class: "dealer-slot-label" }, el("span", { class: "swatch swatch-" + c }), colorLabel(c))
     );
     slotsByColor[c] = slot;
     grid.appendChild(slot);
@@ -6176,9 +6262,9 @@ function renderDealerDrawScreen(state) {
   wrap.appendChild(
     el(
       "div",
-      { class: "lobby-card" },
-      el("h1", {}, "Estrazione del mazziere"),
-      el("p", { class: "muted" }, "Si pescano le carte a turno: chi trova l'Asso di Cuori dà le carte per primo."),
+      { class: "lobby-card", style: "text-align:center;" },
+      el("h1", { style: "font-size:1.15rem;" }, "🎴 Estrazione del mazziere"),
+      el("p", { class: "muted", style: "margin:0 auto;max-width:280px;" }, "Si pesca a turno: chi trova l'Asso di Cuori dà le carte per primo."),
       grid,
       el("div", { id: "dealer-draw-banner" })
     )
@@ -6290,28 +6376,50 @@ function renderExchangeControls(state) {
   const partner = PARTNER_OF[myColor];
   const doneColors = COLORS.filter((c) => !!state.pendingExchange[c]);
   const waitingColors = COLORS.filter((c) => !state.pendingExchange[c]);
+  const pill = (c, cls) =>
+    el("span", { class: "exchange-pill " + cls }, el("span", { class: "swatch swatch-" + c }), playerName(state, c));
   wrap.appendChild(
     el(
       "div",
-      { class: "start-card" },
-      el("p", {}, `Scambio alla cieca: scegli una carta da dare al tuo compagno (${playerName(state, partner)}).`),
-      el("p", { class: "muted" },
+      {},
+      el(
+        "div",
+        { class: "exchange-card" },
+        el("p", { style: "font-weight:800;font-size:0.92rem;" }, "🤝 Scambio alla cieca"),
+        el(
+          "p",
+          { class: "muted", style: "font-size:0.82rem;" },
+          "Scegli una carta da dare al tuo compagno ",
+          el("b", { style: "color:var(--ink);" }, playerName(state, partner)),
+          ", senza dirgli quale."
+        ),
         doneColors.length > 0
-          ? [`Hanno già scelto: `, ...doneColors.flatMap((c, i) => [swatchDot(c), playerName(state, c) + (i < doneColors.length - 1 ? ", " : ". ")])]
+          ? el(
+              "div",
+              { class: "exchange-pill-row" },
+              el("span", { class: "exchange-pill-lead done" }, "✓ Già scelto:"),
+              doneColors.map((c) => pill(c, "done"))
+            )
           : "",
         waitingColors.length > 0
-          ? [`In attesa di: `, ...waitingColors.flatMap((c, i) => [swatchDot(c), playerName(state, c) + (i < waitingColors.length - 1 ? ", " : ".")])]
-          : "Tutti pronti, avvio in corso..."
+          ? el(
+              "div",
+              { class: "exchange-pill-row" },
+              el("span", { class: "exchange-pill-lead" }, "⏳ In attesa di:"),
+              waitingColors.map((c) => pill(c, "waiting"))
+            )
+          : el("p", { style: "font-weight:700;font-size:0.82rem;margin-top:10px;" }, "Tutti pronti, avvio in corso...")
       ),
       already
-        ? el("p", {}, "✅ Hai già scelto la tua carta. In attesa degli altri...")
-        : el(
-            "div",
-            { class: "hand-row" },
-            state.hands[myColor].map((card) =>
-              buildCardButton(card, true, () => sendExchangeCard(card))
-            )
-          )
+        ? el("p", { class: "muted" }, "✅ Hai già scelto la tua carta. In attesa degli altri...")
+        : [
+            el("div", { class: "exchange-label" }, "Tocca la carta da dare"),
+            el(
+              "div",
+              { class: "hand-row" },
+              state.hands[myColor].map((card) => buildCardButton(card, true, () => sendExchangeCard(card)))
+            ),
+          ]
     )
   );
 }
@@ -6764,34 +6872,52 @@ function openRulesPanel() {
   );
 }
 
+// Più pedine possono giocare la stessa carta: stesso stile "chip con
+// pallini stile dado" del picker del Jack/7 (pipIcon), invece del vecchio
+// elenco di bottoni di solo testo — coerenza visiva con gli altri picker
+// anche se questa schermata non ha un mockup dedicato.
 function showPawnChoice(active, card, options) {
   openPicker(
     el(
       "div",
       { class: "choice-box" },
-      el("p", {}, "Più mosse possibili con questa carta: scegli quale fare."),
-      options.map((opt) =>
-        el(
-          "button",
-          {
-            class: "secondary",
-            onclick: async () => { closePicker(); await playMove(active, card, opt); },
-          },
-          optionLabel(opt)
+      el("p", { style: "font-weight:800;font-size:1.05rem;margin-bottom:4px;" }, "Scegli la mossa"),
+      el("p", { class: "muted", style: "font-size:0.78rem;margin:0 0 16px;" }, "Più pedine possono giocare questa carta."),
+      el(
+        "div",
+        { class: "jack-chips pawn-choice-chips" },
+        options.map((opt) =>
+          el(
+            "button",
+            {
+              class: "jack-chip",
+              onclick: async () => { closePicker(); await playMove(active, card, opt); },
+            },
+            pipIcon(active, opt.pawnIndex, 28),
+            el(
+              "span",
+              {},
+              el("span", { style: "display:block;" }, optionTitle(opt)),
+              el("span", { style: "display:block;" }, optionSubtitle(opt))
+            )
+          )
         )
-      )
+      ),
+      el("a", { class: "text-link-btn", style: "display:block;text-align:center;", onclick: closePicker }, "Annulla")
     )
   );
 }
 
-function optionLabel(opt) {
-  if (opt.type === "enter") return "Fai entrare una pedina";
+function optionTitle(opt) {
+  return `Pedina #${opt.pawnIndex + 1}`;
+}
+function optionSubtitle(opt) {
+  if (opt.type === "enter") return "entra in gioco";
   if (opt.type === "move") {
     const dest = opt.path[opt.path.length - 1];
-    const suffix = dest >= 1000 ? " — entra in casa" : " — continua il giro";
-    return `Pedina #${opt.pawnIndex + 1}${suffix}`;
+    return dest >= 1000 ? "entra in casa" : "continua il giro";
   }
-  return "Muovi";
+  return "muovi";
 }
 
 async function playMove(active, card, move) {
@@ -6915,10 +7041,27 @@ async function toggleJackPick(active, card, target) {
 
 // ---------------- Seven splitter ----------------
 
+// pos >= 1000 è la codifica interna delle 4 caselle del percorso-casa
+// (1000 + indice 0..3, vedi il commento sulla forma dello stato più sopra)
+// — un numero "grezzo" come 1003 non ha senso mostrato a schermo, va
+// tradotto in un'etichetta leggibile (a differenza delle caselle del
+// giro principale 0..63, che invece si mostrano già come numero puro
+// altrove — coerente col mockup Picker-jack.dc.html).
+function sevenRowLabel(pos) {
+  if (pos === -1) return "Base → entra in gioco";
+  if (pos >= 1000) return `In casa (${pos - 1000 + 1}ª casella) → prosegue`;
+  return `Casella ${pos} → prosegue`;
+}
+
 function openSevenSplitter(active, card) {
+  // Non proporre pedine già in gioco che in realtà non potrebbero ricevere
+  // nemmeno un passo in NESSUNA distribuzione valida (bloccate da una
+  // propria pedina davanti, o a fine percorso-casa) — altrimenti lo
+  // splitter mostra righe che sembrano un'opzione ma non lo sono mai.
   const pawns = currentState.pawns[active]
     .map((p, i) => ({ pawnIndex: i, pos: p }))
-    .filter((x) => x.pos !== -1);
+    .filter((x) => x.pos !== -1)
+    .filter((x) => sevenPawnCanReceiveSteps(currentState, active, x.pawnIndex));
   sevenAllocation = {};
   pawns.forEach((p) => (sevenAllocation[p.pawnIndex] = 0));
   renderSevenSplitter(active, card, pawns);
@@ -6947,7 +7090,7 @@ function renderSevenSplitter(active, card, pawns) {
           "div",
           { class: "seven-row" + (sevenAllocation[p.pawnIndex] > 0 ? " has-steps" : "") },
           pipIcon(active, p.pawnIndex, 34),
-          el("div", { class: "seven-row-text" }, p.pos === -1 ? "Base → entra in gioco" : `Casella ${p.pos} → prosegue`),
+          el("div", { class: "seven-row-text" }, sevenRowLabel(p.pos)),
           el("button", { class: "seven-step-btn", onclick: () => adjustSeven(active, card, pawns, p.pawnIndex, -1) }, "−"),
           el("span", { class: "seven-val" }, String(sevenAllocation[p.pawnIndex])),
           el("button", { class: "seven-step-btn", onclick: () => adjustSeven(active, card, pawns, p.pawnIndex, 1) }, "+")
@@ -7120,6 +7263,40 @@ async function sendChat() {
 
 // ---------------- Log / win ----------------
 
+// Icona + colore del PALLINO per tipo di evento (non per colore del
+// giocatore) — come in Registro.dc.html, dove ogni tipo di mossa ha la
+// sua icona/colore fisso (mangiata=rossa, 7=oro, arrivo in casa=verde,
+// Jack=blu) indipendentemente da chi l'ha giocata. Le righe "normali"
+// (mazzo distribuito, carta bruciata, mossa semplice...) restano un
+// pallino pieno del colore di chi ha agito, senza icona.
+const LOG_EVENT_TYPES = [
+  { test: (l) => l.includes("mangia"), bg: "#D9636B", sw: 3, shapes: [["path", { d: "M6 6l12 12M18 6L6 18" }]] },
+  { test: (l) => l.includes("gioca il 7") || l.includes("parte del 7"), bg: "#C99A3A", sw: 3, shapes: [["path", { d: "M8 3L4 7l4 4M16 3l4 4-4 4M4 7h16" }]] },
+  { test: (l) => l.includes("Jack"), bg: "#3E8FCB", sw: 2.6, shapes: [["path", { d: "M17 1l4 4-4 4M3 11V9a4 4 0 0 1 4-4h14M7 23l-4-4 4-4M21 13v2a4 4 0 0 1-4 4H3" }]] },
+  { test: (l) => l.includes("casa#"), bg: "#3FA77E", sw: 2.6, shapes: [["path", { d: "M12 2l2.9 6.3 6.9.8-5.1 4.7 1.4 6.9-6.1-3.5-6.1 3.5 1.4-6.9-5.1-4.7 6.9-.8z" }]] },
+];
+function logEventBadge(line, fallbackColor) {
+  const type = LOG_EVENT_TYPES.find((t) => t.test(line));
+  if (!type) return el("span", { class: "log-dot", style: `background:${fallbackColor ? `var(--${fallbackColor})` : "#C7BCA4"};` });
+  return el("span", { class: "log-dot", style: `background:${type.bg};` }, svgIcon(11, 11, "0 0 24 24", "#FFFFFF", type.sw, type.shapes));
+}
+// Spezza il testo sui nomi-colore e li mette in grassetto (scuro), come
+// "<b>Rosso</b> mangia <b>Verde</b> in casella 34" nel mockup — invece di
+// una riga di testo tutta uniforme.
+function boldColorNames(line) {
+  const names = LOG_COLORS.map(colorLabel);
+  const re = new RegExp(`\\b(${names.join("|")})\\b`, "g");
+  const parts = [];
+  let last = 0, m;
+  while ((m = re.exec(line))) {
+    if (m.index > last) parts.push(line.slice(last, m.index));
+    parts.push(el("b", {}, m[0]));
+    last = m.index + m[0].length;
+  }
+  if (last < line.length) parts.push(line.slice(last));
+  return parts;
+}
+
 const LOG_COLORS = ["red", "green", "yellow", "blue"];
 function detectLogColor(line) {
   // pick whichever color name appears EARLIEST in the sentence — that's
@@ -7198,18 +7375,20 @@ function renderLog(state) {
   wrap.appendChild(controls);
 
   const items = (logExpanded ? all : all.slice(-8)).slice().reverse();
+  const timeline = el("div", { class: "log-timeline" });
   items.forEach((rawLine) => {
     const line = displayLogLine(rawLine);
     const color = detectLogColor(line);
-    wrap.appendChild(
+    timeline.appendChild(
       el(
         "div",
         { class: "log-line" },
-        color ? el("span", { class: "log-dot swatch-" + color }) : el("span", { class: "log-dot", style: "background:#C7BCA4;" }),
-        el("span", {}, line)
+        logEventBadge(line, color),
+        el("span", { class: "log-text" }, boldColorNames(line))
       )
     );
   });
+  wrap.appendChild(timeline);
 }
 
 // Exports the full move log PLUS the current board state (positions,
@@ -7261,14 +7440,32 @@ function renderWinBanner(state) {
   const banner = el(
     "div",
     { class: "win-banner" },
-    el("div", { class: "win-trophy" }, "🏆"),
-    el("h2", {}, `${TEAM_LABEL[state.winnerTeam]} ha vinto!`),
-    el("p", { class: "win-names" }, names),
+    el(
+      "div",
+      { class: "win-trophy" },
+      svgIcon(28, 28, "0 0 24 24", "#3B2A18", 2, [
+        ["path", { d: "M8 21h8M12 17v4M7 4h10l-1 9a4 4 0 0 1-8 0L7 4Z" }],
+        ["path", { d: "M17 5h2a2 2 0 0 1 2 2c0 2-2 4-4 4M7 5H5a2 2 0 0 0-2 2c0 2 2 4 4 4" }],
+      ])
+    ),
+    el("div", { class: "win-eyebrow" }, "Partita finita"),
+    el(
+      "div",
+      { class: "win-team-dots" },
+      winners.map((c) => el("span", { style: `background:${BASE_COL[c]};` }))
+    ),
+    el("h2", {}, `${TEAM_LABEL[state.winnerTeam]} vincono!`),
+    el("p", { class: "win-names" }, `${names} portano tutte le pedine a casa`),
     // Storico di questa stanza — non della singola partita — così si vede
     // subito chi sta vincendo di più nella serie, non solo nell'ultima.
-    el("p", { class: "muted", style: "margin-top:8px;font-size:0.85rem;" },
+    el("p", { class: "muted", style: "margin:-10px 0 16px;font-size:0.85rem;" },
       `In questa stanza: ${TEAM_LABEL.A} ${wins.A} — ${wins.B} ${TEAM_LABEL.B}`),
-    el("button", { class: "primary", style: "margin-top:12px;width:auto;padding:10px 20px;", onclick: startNewGame }, "Nuova partita")
+    el("button", { class: "primary", onclick: startNewGame }, "🔁 Nuova partita"),
+    el(
+      "button",
+      { class: "text-link-btn", style: "display:flex;width:100%;justify-content:center;margin-top:10px;", onclick: () => { location.href = location.pathname; } },
+      "Torna alla lobby"
+    )
   );
   const backdrop = el("div", { class: "win-banner-backdrop" }, banner);
   root.prepend(backdrop);
