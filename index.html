@@ -41,7 +41,7 @@ body {
   color: var(--ink);
 }
 
-#app { max-width: 480px; margin: 0 auto; padding: calc(12px + env(safe-area-inset-top)) 12px 12px; min-height: 100vh; }
+#app { max-width: 480px; margin: 0 auto; padding: calc(26px + env(safe-area-inset-top)) 20px 20px; min-height: 100vh; }
 
 h1 { font-size: 1.4rem; margin: 0 0 4px; color: var(--ink); }
 .app-logo { display: flex; flex-direction: column; align-items: center; margin-bottom: 16px; transform: rotate(-2deg); }
@@ -65,12 +65,52 @@ h1 { font-size: 1.4rem; margin: 0 0 4px; color: var(--ink); }
 .muted { color: #8A7F6E; font-size: 0.9rem; }
 
 .lobby-card, .start-card {
-  background: var(--panel);
-  border: 1px solid var(--panel-border);
-  border-radius: 18px;
-  padding: 20px;
-  box-shadow: 0 10px 26px -14px rgba(90,65,20,0.25);
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  box-shadow: none;
 }
+
+/* Intestazione delle schermate di sala d'attesa: logo (pallini + scritta)
+   a sinistra, pulsante "Invita" a destra sulla stessa riga — invece del
+   vecchio titolo centrato + bottone a tutta larghezza sotto. */
+.lobby-header-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 22px;
+}
+.lobby-header-row .app-logo {
+  align-items: flex-start;
+  margin-bottom: 0;
+}
+.lobby-header-row .app-logo-dots { justify-content: flex-start; gap: 5px; width: 74px; }
+.lobby-header-row .app-logo-dots span { width: 7px; height: 7px; }
+.lobby-header-row .app-logo h1 { text-align: left; font-size: 2rem; }
+
+/* "Etichetta" bianca con il codice stanza, come nel mockup — al posto del
+   codice infilato nel paragrafo di istruzioni. */
+.room-tag {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  background: #FFFFFF;
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  padding: 10px 14px;
+  margin-bottom: 22px;
+  width: fit-content;
+}
+.room-tag-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted-3);
+}
+.room-tag-code { font-size: 1.05rem; font-weight: 800; letter-spacing: 0.04em; color: var(--ink); }
 
 #room-input, #name-input {
   width: 100%;
@@ -122,7 +162,90 @@ h1 { font-size: 1.4rem; margin: 0 0 4px; color: var(--ink); }
   text-transform: uppercase;
 }
 
-.color-cell { display: flex; flex-direction: column; gap: 5px; }
+/* Ogni riquadro colore è un'unica card (bordo tratteggiato se libero, bordo
+   pieno se preso/scelto) che contiene sia il pallino+nome sia — quando
+   libero — i pulsanti "assegna al computer": prima erano due blocchi
+   separati (bottone + div sotto), ora sono un solo riquadro come nel mockup. */
+.color-cell {
+  display: flex;
+  flex-direction: column;
+  border-radius: 16px;
+  padding: 14px;
+  background: #FFFFFF;
+  border: 1.5px dashed var(--panel-border);
+  position: relative;
+  transition: border-color .12s ease, background .12s ease, transform .12s ease;
+}
+.color-cell.cc-red.cc-free { border-color: #E9C6C9; }
+.color-cell.cc-green.cc-free { border-color: #CFE4D9; }
+.color-cell.cc-yellow.cc-free { border-color: #EFDFB0; }
+.color-cell.cc-blue.cc-free { border-color: #CFE0EC; }
+.color-cell.cc-taken {
+  border-style: solid;
+  border-width: 1.5px;
+}
+.color-cell.cc-red.cc-taken { background: #F7DCDE; border-color: #E3ABB0; }
+.color-cell.cc-green.cc-taken { background: #DCEFE5; border-color: #9FCFB4; }
+.color-cell.cc-yellow.cc-taken { background: #FBF1D8; border-color: #EFDFB0; }
+.color-cell.cc-blue.cc-taken { background: #DCE9F3; border-color: #9EC3DE; }
+.color-cell.cc-mine {
+  border-style: solid;
+  border-width: 2px;
+  transform: scale(0.98);
+}
+.color-cell.cc-red.cc-mine { background: #F7DCDE; border-color: var(--red); }
+.color-cell.cc-green.cc-mine { background: #DCEFE5; border-color: var(--green); }
+.color-cell.cc-yellow.cc-mine { background: #FBF1D8; border-color: var(--yellow); }
+.color-cell.cc-blue.cc-mine { background: #DCE9F3; border-color: var(--blue); }
+
+.color-card-check {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.color-cell.cc-red .color-card-check { background: var(--red); }
+.color-cell.cc-green .color-card-check { background: var(--green); }
+.color-cell.cc-yellow .color-card-check { background: var(--yellow); }
+.color-cell.cc-blue .color-card-check { background: var(--blue); }
+
+.color-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  border: none;
+  background: transparent;
+  padding: 0;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+}
+.color-btn:disabled { cursor: default; }
+.color-card-dot {
+  display: block;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  margin-bottom: 10px;
+  background: currentColor;
+}
+.cc-free .color-card-dot { opacity: 0.85; }
+.color-red .color-card-dot, .cc-red .color-card-dot { color: var(--red); }
+.color-green .color-card-dot, .cc-green .color-card-dot { color: var(--green); }
+.color-yellow .color-card-dot, .cc-yellow .color-card-dot { color: var(--yellow); }
+.color-blue .color-card-dot, .cc-blue .color-card-dot { color: var(--blue); }
+.color-card-name { font-size: 0.88rem; font-weight: 800; color: var(--ink); }
+.color-card-sub { font-size: 0.7rem; font-weight: 700; margin-top: 2px; }
+.cc-red .color-card-sub { color: #A5424A; }
+.cc-green .color-card-sub { color: #2C7A54; }
+.cc-yellow .color-card-sub { color: #A5842B; }
+.cc-blue .color-card-sub { color: #2E6690; }
+.color-card-free-label { font-size: 0.82rem; font-weight: 700; color: var(--muted-3); margin-bottom: 8px; }
 .bot-btn {
   font-size: 0.68rem;
   font-weight: 700;
@@ -144,39 +267,10 @@ h1 { font-size: 1.4rem; margin: 0 0 4px; color: var(--ink); }
    sala d'attesa (dopo essere entrati) invece che solo nella lobby iniziale. */
 .missing-bots-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
 
-.color-btn {
-  padding: 14px;
-  border-radius: 16px;
-  border: 1.5px solid var(--panel-border);
-  background: #FFFFFF;
-  font-weight: 800;
-  font-size: 0.85rem;
-  color: var(--ink);
-  text-align: left;
-  cursor: pointer;
-  position: relative;
-  transition: border-color .12s ease, background .12s ease, transform .12s ease;
-}
-.color-btn::before {
-  content: "";
-  display: block;
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
-  margin-bottom: 8px;
-  background: currentColor;
-}
 .color-red { color: var(--red); }
 .color-green { color: var(--green); }
 .color-yellow { color: var(--yellow); }
 .color-blue { color: var(--blue); }
-.color-btn span { display: block; color: var(--ink); }
-.color-red.selected { background: #F7DCDE; border-color: var(--red); }
-.color-green.selected { background: #DCEFE5; border-color: var(--green); }
-.color-yellow.selected { background: #FBF1D8; border-color: var(--yellow); }
-.color-blue.selected { background: #DCE9F3; border-color: var(--blue); }
-.color-btn.selected { transform: scale(0.98); }
-.color-btn:disabled { opacity: 0.5; cursor: default; }
 
 /* ---- modalità stanza: manuale / estrazione ---- */
 .mode-choice { display: flex; flex-direction: column; gap: 12px; margin-top: 6px; }
@@ -286,9 +380,31 @@ button.primary {
   border: none;
   border-radius: 16px;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
   transition: transform 0.08s ease, box-shadow 0.08s ease, filter 0.08s ease, background 0.08s ease;
   box-shadow: 0 8px 20px -8px rgba(201,154,58,0.55);
 }
+/* Link testuale senza bordo/sfondo, come "Cambia stanza" nel mockup —
+   prima riusava lo stesso stile a pillola bianca dei pulsanti bot/suono,
+   che nel mockup invece è un semplice link con icona. */
+.text-link-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  color: var(--muted-3);
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+}
+.text-link-btn:hover { color: var(--ink); }
 button.primary:hover { background: var(--gold-hover); }
 button.primary:active {
   transform: translateY(1px);
@@ -3693,7 +3809,7 @@ function renderPawns(svg, board, pawns, lastSwap, lastCapture, lastHomeEntry) {
 // Bumped by hand each time a new build is produced — shown in the lobby so
 // it's obvious at a glance whether you're on the latest version, instead
 // of guessing from a stale browser tab or cache.
-const APP_VERSION = "v4.0";
+const APP_VERSION = "v4.1";
 
 let myColor = null;
 let myRoomId = null;
@@ -3728,6 +3844,41 @@ function el(tag, props, ...children) {
     else if (c) e.appendChild(c);
   });
   return e;
+}
+
+// Piccola utilità per costruire icone SVG inline (nessuna libreria di icone,
+// solo path disegnati a mano come nei mockup) senza ripetere ogni volta il
+// boilerplate createElementNS.
+function svgIcon(width, height, viewBox, stroke, strokeWidth, shapes) {
+  const ns = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("width", width);
+  svg.setAttribute("height", height);
+  svg.setAttribute("viewBox", viewBox);
+  svg.setAttribute("fill", "none");
+  svg.setAttribute("stroke", stroke);
+  svg.setAttribute("stroke-width", strokeWidth);
+  svg.setAttribute("stroke-linecap", "round");
+  svg.setAttribute("stroke-linejoin", "round");
+  shapes.forEach(([tag, attrs]) => {
+    const shape = document.createElementNS(ns, tag);
+    Object.entries(attrs).forEach(([k, v]) => shape.setAttribute(k, v));
+    svg.appendChild(shape);
+  });
+  return svg;
+}
+
+// Le due iconcine riusate ovunque nel flusso di lobby: freccia indietro per
+// "Cambia stanza" e freccia avanti per i pulsanti "Entra nella stanza" —
+// come nei mockup, al posto dei caratteri "◀"/testo semplice usati prima.
+function backChevronIcon() {
+  return svgIcon(12, 12, "0 0 24 24", "currentColor", 2.6, [["polyline", { points: "15 18 9 12 15 6" }]]);
+}
+function forwardArrowIcon(stroke) {
+  return svgIcon(17, 17, "0 0 24 24", stroke || "#241C15", 2.6, [
+    ["line", { x1: 5, y1: 12, x2: 19, y2: 12 }],
+    ["polyline", { points: "12 5 19 12 12 19" }],
+  ]);
 }
 
 // ---------------- Lobby ----------------
@@ -3911,7 +4062,7 @@ function renderModeChoice(roomId) {
       ),
       el("p", { class: "muted", style: "margin-top:12px; font-size:0.78rem;" },
         "La modalità scelta vale per tutta la stanza: chi entra dopo la trova già impostata."),
-      el("button", { class: "sound-test-btn", style: "margin-top:6px;", onclick: renderLobby }, "◀ Cambia stanza")
+      el("button", { class: "text-link-btn", style: "margin-top:6px;", onclick: renderLobby }, backChevronIcon(), "Cambia stanza")
     )
   );
 }
@@ -3962,7 +4113,7 @@ function renderNameRecoveryScreen(roomId) {
       nameInput,
       el("button", { id: "recover-btn", class: "primary", onclick: () => recoverByName(roomId) }, "Rientra con questo nome"),
       el("button", { class: "sound-test-btn", style: "margin-top:10px;", onclick: () => continueAsNewPlayer(roomId) }, "Sono nuovo, continua"),
-      el("button", { class: "sound-test-btn", style: "margin-top:6px;", onclick: renderLobby }, "◀ Cambia stanza")
+      el("button", { class: "text-link-btn", style: "margin-top:6px;", onclick: renderLobby }, backChevronIcon(), "Cambia stanza")
     )
   );
 }
@@ -4049,24 +4200,53 @@ function renderManualLobby(roomId, existingPlayers) {
     el(
       "div",
       { class: "lobby-card" },
-      el("h1", {}, "Tock"),
-      el("p", { class: "muted" }, `Stanza ${roomId} — inserisci il tuo nome e scegli il tuo colore.`),
       el(
-        "button",
-        { class: "sound-test-btn", style: "margin:-4px 0 12px;", onclick: () => shareInviteLink(roomId) },
-        "📤 Invita amici"
+        "div",
+        { class: "lobby-header-row" },
+        el(
+          "div",
+          { class: "app-logo" },
+          el(
+            "div",
+            { class: "app-logo-dots" },
+            el("span", { class: "ld-red" }),
+            el("span", { class: "ld-green" }),
+            el("span", { class: "ld-yellow" }),
+            el("span", { class: "ld-blue" })
+          ),
+          el("h1", {}, "Tock")
+        ),
+        el(
+          "button",
+          { class: "sound-test-btn", "aria-label": "Invita amici", onclick: () => shareInviteLink(roomId) },
+          svgIcon(15, 15, "0 0 24 24", "#9C7420", 2.2, [
+            ["circle", { cx: 18, cy: 5, r: 3 }],
+            ["circle", { cx: 6, cy: 12, r: 3 }],
+            ["circle", { cx: 18, cy: 19, r: 3 }],
+            ["line", { x1: 8.6, y1: 10.6, x2: 15.4, y2: 6.4 }],
+            ["line", { x1: 8.6, y1: 13.4, x2: 15.4, y2: 17.6 }],
+          ]),
+          "Invita"
+        )
       ),
+      el(
+        "div",
+        { class: "room-tag" },
+        el("span", { class: "room-tag-label" }, "Stanza"),
+        el("span", { class: "room-tag-code" }, roomId)
+      ),
+      el("p", { class: "muted" }, "Inserisci il tuo nome e scegli il tuo colore."),
       stepLabel(1, "Il tuo nome"),
       nameInput,
       stepLabel(2, "Scegli il tuo colore"),
       el("div", { id: "color-row-wrap" }), // riempito/aggiornato da renderLobbyColorSection
       stepLabel(3, "Entra in partita"),
-      el("button", { id: "join-btn", class: "primary", disabled: true, onclick: () => joinManualRoom(roomId) }, "Entra nella stanza"),
+      el("button", { id: "join-btn", class: "primary", disabled: true, onclick: () => joinManualRoom(roomId) }, "Entra nella stanza", forwardArrowIcon()),
       el("p", { id: "join-hint", class: "muted", style: "font-size:0.8rem;margin-top:6px;" }, "Scegli un colore per continuare."),
       el(
         "div",
         { class: "sound-test-row" },
-        el("button", { class: "sound-test-btn", onclick: () => { stopLobbyListener(); renderLobby(); } }, "◀ Cambia stanza"),
+        el("button", { class: "text-link-btn", onclick: () => { stopLobbyListener(); renderLobby(); } }, backChevronIcon(), "Cambia stanza"),
         el("span", { class: "app-meta" }, `Tock by Mig · ${APP_VERSION} · © 2026 Mig`)
       ),
       homeScreenHint()
@@ -4094,9 +4274,11 @@ function renderManualLobby(roomId, existingPlayers) {
 // così un aggiornamento in tempo reale non cancella mai il nome che stai
 // scrivendo nel campo sopra. Chiamata sia al primo render sia da ogni
 // tick dell'ascolto Firebase in renderManualLobby.
+let lastColorSectionArgs = null;
 function renderLobbyColorSection(roomId, existingPlayers) {
   const wrap = $("#color-row-wrap");
   if (!wrap) return; // non siamo più su questa schermata (es. si è già entrati)
+  lastColorSectionArgs = { roomId, existingPlayers };
 
   // Una selezione già fatta non deve sparire solo perché la schermata si è
   // aggiornata (da un'azione tua su un bot, o ora anche da un altro
@@ -4109,16 +4291,43 @@ function renderLobbyColorSection(roomId, existingPlayers) {
   // e mostrano CHI li ha presi (nome, o "computer") invece di un generico
   // "(preso)" che non diceva nulla su chi ci fosse già dentro.
   const takenColors = new Set(Object.keys(existingPlayers || {}));
+  const checkmark = () =>
+    el(
+      "span",
+      { class: "color-card-check" },
+      svgIcon(12, 12, "0 0 24 24", "#FFFFFF", 3.2, [["polyline", { points: "20 6 9 17 4 12" }]])
+    );
+  // Il "corpo" cliccabile del riquadro: pallino + nome/etichetta. Preso da un
+  // altro giocatore -> nome (o "computer") e colore come sottotitolo; è il
+  // tuo colore già scelto (ma non ancora confermato, vedi joinManualRoom) ->
+  // il tuo nome (se scritto) e un segno di spunta; libero -> solo "Libero",
+  // i pulsanti bot stanno sotto nello stesso riquadro.
   const colorBtn = (c) => {
     const occupant = existingPlayers && existingPlayers[c];
-    let label = colorLabel(c);
-    if (occupant) label += occupant.isBot ? " (computer)" : ` — ${occupant.name || colorLabel(c)}`;
-    return el("button", {
-      class: "color-btn color-" + c + (myColor === c ? " selected" : ""),
-      onclick: () => selectColor(c),
-      "data-color": c,
-      disabled: takenColors.has(c),
-    }, el("span", {}, label));
+    const mine = !occupant && myColor === c;
+    let inner;
+    if (occupant) {
+      inner = [
+        el("span", { class: "color-card-dot" }),
+        el("div", { class: "color-card-name" }, occupant.isBot ? "Computer" : occupant.name || colorLabel(c)),
+        el("div", { class: "color-card-sub" }, colorLabel(c)),
+      ];
+    } else if (mine) {
+      const myDisplayName = ($("#name-input") && $("#name-input").value.trim()) || myName || "Tu";
+      inner = [
+        checkmark(),
+        el("span", { class: "color-card-dot" }),
+        el("div", { class: "color-card-name" }, myDisplayName),
+        el("div", { class: "color-card-sub" }, `${colorLabel(c)} · tu`),
+      ];
+    } else {
+      inner = [el("span", { class: "color-card-dot" }), el("div", { class: "color-card-free-label" }, "Libero")];
+    }
+    return el(
+      "button",
+      { class: "color-btn color-" + c, onclick: () => selectColor(c), "data-color": c, disabled: takenColors.has(c) },
+      inner
+    );
   };
   // Ogni posto libero può anche essere affidato al computer invece che a
   // una persona — comodo per provare/giocare quando non siete in 4. Un
@@ -4128,6 +4337,7 @@ function renderLobbyColorSection(roomId, existingPlayers) {
   // ridisegnare non appena Firebase conferma la scrittura.
   const botCell = (c) => {
     const taken = existingPlayers && existingPlayers[c];
+    if (!taken && myColor === c) return ""; // è il colore che hai appena scelto tu, niente pulsanti bot
     if (!taken) {
       return el(
         "div",
@@ -4146,7 +4356,14 @@ function renderLobbyColorSection(roomId, existingPlayers) {
     }
     return "";
   };
-  const colorCell = (c) => el("div", { class: "color-cell" }, colorBtn(c), botCell(c));
+  // Il riquadro intero (.color-cell) porta ora bordo/sfondo/posizione dello
+  // stato (preso/tuo/libero) — prima erano due blocchi separati (bottone +
+  // div sotto) invece di un'unica card come nel mockup.
+  const colorCell = (c) => {
+    const occupant = existingPlayers && existingPlayers[c];
+    const state = occupant ? "cc-taken" : myColor === c ? "cc-mine" : "cc-free";
+    return el("div", { class: `color-cell cc-${c} ${state}` }, colorBtn(c), botCell(c));
+  };
   const teamAColors = COLORS.filter((c) => TEAM_OF[c] === "A");
   const teamBColors = COLORS.filter((c) => TEAM_OF[c] === "B");
   wrap.innerHTML = "";
@@ -4235,12 +4452,17 @@ function playerName(state, c) {
 
 function selectColor(c) {
   myColor = c;
-  document.querySelectorAll(".color-btn").forEach((b) => b.classList.remove("selected"));
-  document.querySelector(`.color-${c}`).classList.add("selected");
-  const joinBtn = document.getElementById("join-btn");
-  if (joinBtn) joinBtn.disabled = false;
-  const hint = document.getElementById("join-hint");
-  if (hint) hint.style.display = "none";
+  // Ridisegna l'intera sezione colori invece di limitarsi a spostare la
+  // classe "selected" — ora serve perché il riquadro scelto mostra anche il
+  // segno di spunta e il tuo nome, non solo un bordo diverso.
+  if (lastColorSectionArgs) {
+    renderLobbyColorSection(lastColorSectionArgs.roomId, lastColorSectionArgs.existingPlayers);
+  } else {
+    const joinBtn = document.getElementById("join-btn");
+    if (joinBtn) joinBtn.disabled = false;
+    const hint = document.getElementById("join-hint");
+    if (hint) hint.style.display = "none";
+  }
 }
 
 async function joinManualRoom(roomId) {
@@ -4414,8 +4636,8 @@ function renderDraftNameScreen(roomId) {
       el("h1", {}, "Tock"),
       el("p", { class: "muted" }, `Stanza ${roomId} — modalità estrazione a sorte: qui non scegli il colore, solo il nome.`),
       nameInput,
-      el("button", { id: "join-btn", class: "primary", onclick: () => joinDraftRoom(roomId) }, "Entra nella stanza"),
-      el("button", { class: "sound-test-btn", style: "margin-top:10px;", onclick: renderLobby }, "◀ Cambia stanza"),
+      el("button", { id: "join-btn", class: "primary", onclick: () => joinDraftRoom(roomId) }, "Entra nella stanza", forwardArrowIcon()),
+      el("button", { class: "text-link-btn", style: "margin-top:10px;", onclick: renderLobby }, backChevronIcon(), "Cambia stanza"),
       homeScreenHint()
     )
   );
