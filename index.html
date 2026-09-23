@@ -442,6 +442,14 @@ h1 { font-size: 1.4rem; margin: 0 0 4px; color: var(--ink); }
 .solo-btn:disabled { opacity: 0.45; cursor: default; }
 .pair-ry { background: linear-gradient(90deg, var(--red), var(--yellow)); }
 .pair-gb { background: linear-gradient(90deg, var(--green), var(--blue)); }
+/* .color-* (righe più sopra) imposta solo il COLORE DEL TESTO — utile per
+   badge/icone su sfondo chiaro, ma qui su .solo-btn (testo bianco fisso)
+   serviva anche uno sfondo colorato: senza, il pulsante restava bianco su
+   bianco (testo invisibile). */
+.solo-btn.color-red { background: var(--red); }
+.solo-btn.color-green { background: var(--green); }
+.solo-btn.color-yellow { background: var(--yellow); }
+.solo-btn.color-blue { background: var(--blue); }
 .dot-sm { width: 11px; height: 11px; border-radius: 50%; display: inline-block; border: 1.5px solid rgba(255,255,255,0.7); flex-shrink: 0; }
 
 /* ---- estrazione mazziere (asso di cuori) ---- */
@@ -4424,7 +4432,7 @@ function renderPawns(svg, board, pawns, lastSwap, lastCapture, lastHomeEntry) {
 // Bumped by hand each time a new build is produced — shown in the lobby so
 // it's obvious at a glance whether you're on the latest version, instead
 // of guessing from a stale browser tab or cache.
-const APP_VERSION = "v4.20";
+const APP_VERSION = "v4.21";
 
 let myColor = null;
 let myRoomId = null;
@@ -5590,10 +5598,30 @@ function maybeFinalizeDraft(state) {
   // partita"), qui l'estrazione è già di per sé l'azione che l'unica
   // persona presente ha compiuto: non ha senso rimandarla a un secondo
   // click su un pulsante che potrebbe non essere ovvio da trovare. Si
-  // parte quindi subito con l'estrazione del mazziere, esattamente come
-  // fa startGame() per la primissima mano di una stanza.
-  state.phase = "dealerDraw";
-  state.dealerDraw = buildDealerDrawSequence();
+  // distribuisce quindi subito la prima mano (vedi la nota su
+  // dealAndRevealDealer per perché non si aspetta più l'animazione).
+  dealAndRevealDealer(state);
+}
+
+// Determina il mazziere e distribuisce subito la prima mano, invece di
+// limitarsi a impostare la fase "dealerDraw" e ASPETTARE che l'animazione
+// lato client (fino a ~30s: pesca carte finché non esce l'Asso di Cuori)
+// finisca per davvero distribuire — quell'attesa dipendeva da un SOLO
+// client che restasse in primo piano per tutta la sua durata, esattamente
+// il tipo di punto debole già visto e corretto altrove in questa sessione
+// (se quel client si bloccava, andava in background o si ricaricava a
+// metà, la partita restava bloccata per sempre su "in attesa"). Il
+// risultato dell'estrazione è comunque deterministico e calcolato subito
+// (buildDealerDrawSequence), quindi non c'è motivo di farlo dipendere da
+// un'animazione: la sequenza resta salvata in state.dealerDraw SOLO per
+// essere mostrata come effetto scenico da ogni client (vedi
+// renderDealerDrawScreen), ma il gioco vero e proprio (fase, mazziere,
+// carte in mano) è già pronto anche se nessuno la vede fino alla fine.
+function dealAndRevealDealer(state) {
+  const draw = buildDealerDrawSequence();
+  state.dealerDraw = draw;
+  state.dealerColor = draw.winnerColor;
+  dealNewHand(state); // porta la fase a "exchanging" e distribuisce le carte
 }
 
 // Se una coppia estratta è composta da DUE bot, nessun client umano
@@ -7274,7 +7302,11 @@ let dealerDrawAnimShown = { forRoom: null, done: false };
 // closePicker usato per i picker del Jack/7/regole), non più come riquadro
 // fisso in mezzo alla pagina — su richiesta, coerente col resto dell'app.
 function renderDealerDrawScreen(state) {
-  if (state.phase !== "dealerDraw" || !state.dealerDraw) {
+  // Il gating è su state.dealerDraw (non più su state.phase === "dealerDraw":
+  // vedi dealAndRevealDealer) — la fase passa subito a "exchanging" con le
+  // carte già distribuite, e questa rimane solo la rivelazione scenica di
+  // un risultato già calcolato, mostrata in sovraimpressione a ogni client.
+  if (!state.dealerDraw) {
     if (dealerDrawAnimShown.forRoom === myRoomId) {
       dealerDrawAnimShown = { forRoom: null, done: false };
       closePicker();
@@ -7345,13 +7377,16 @@ async function animateDealerDraw(sequence) {
   finishDealerDraw();
 }
 
+// Non distribuisce più le carte (lo fa già dealAndRevealDealer, subito,
+// non appena il mazziere è determinato) — qui si limita a far sparire dal
+// database il risultato ormai mostrato, così un client che si ricollega
+// più tardi non si ritrova a rivedere una rivelazione vecchia di una mano
+// già in corso da un pezzo.
 async function finishDealerDraw() {
   try {
     await updateState(myRoomId, (state) => {
-      if (state.phase !== "dealerDraw" || !state.dealerDraw) return; // un altro client è già passato oltre
-      state.dealerColor = state.dealerDraw.winnerColor;
+      if (!state.dealerDraw) return; // già ripulito da un altro client
       state.dealerDraw = null;
-      dealNewHand(state); // porta la fase a "exchanging"
     });
   } catch (e) {
     console.error(e);
@@ -7405,10 +7440,10 @@ async function startGame() {
     await updateState(myRoomId, (state) => {
       if (COLORS.some((c) => !state.players[c])) throw new Error("mancano giocatori");
       if (!state.hasDealtBefore) {
-        // Primissima mano di questa stanza: prima si estrae il mazziere
-        // pescando le carte (vedi renderDealerDrawScreen), poi si distribuisce.
-        state.phase = "dealerDraw";
-        state.dealerDraw = buildDealerDrawSequence();
+        // Primissima mano di questa stanza: estrae il mazziere e distribuisce
+        // subito (vedi dealAndRevealDealer per perché non si aspetta più
+        // l'animazione per farlo davvero).
+        dealAndRevealDealer(state);
       } else {
         dealNewHand(state); // sets phase to "exchanging" itself
       }
