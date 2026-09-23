@@ -4432,7 +4432,7 @@ function renderPawns(svg, board, pawns, lastSwap, lastCapture, lastHomeEntry) {
 // Bumped by hand each time a new build is produced — shown in the lobby so
 // it's obvious at a glance whether you're on the latest version, instead
 // of guessing from a stale browser tab or cache.
-const APP_VERSION = "v4.24";
+const APP_VERSION = "v4.25";
 
 let myColor = null;
 let myRoomId = null;
@@ -7362,11 +7362,6 @@ function renderDealerDrawScreen(state) {
   if (dealerDrawAnimShown.forRoom === myRoomId) return; // già in corso o conclusa per questa stanza
 
   dealerDrawAnimShown = { forRoom: myRoomId, done: false };
-  // Segnale di riserva sempre visibile (i toast funzionano già in tutta
-  // l'app): finché non è confermato che la schermata dell'estrazione si
-  // vede regolarmente su ogni dispositivo, questo garantisce che il
-  // risultato arrivi comunque.
-  showToast(`🎴 ${colorLabel(state.dealerDraw.winnerColor)} dà le carte per primo!`);
   const slotsByColor = {};
   const grid = el("div", { class: "dealer-draw-grid" });
   COLORS.forEach((c) => {
