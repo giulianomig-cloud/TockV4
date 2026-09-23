@@ -627,16 +627,31 @@ button.danger:active {
   gap: 10px;
   margin-bottom: 10px;
 }
+/* "Stanza" e il codice ora su due righe impilate (prima erano affiancate
+   sulla stessa riga) — il blocco intero resta centrato in verticale
+   sull'altezza dei pulsanti menu grazie ad align-items:center su
+   .top-actions-row. */
 .top-actions-room {
-  font-size: 0.68rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.top-actions-room-label {
+  font-size: 0.6rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.07em;
   color: var(--muted-3);
+}
+.top-actions-room-code {
+  font-size: 0.85rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  color: var(--ink);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  min-width: 0;
 }
 .top-actions-icons { display: flex; gap: 6px; flex-shrink: 0; }
 /* Chi sei + squadra, tra il menu e il tabellone (prima erano insieme al
@@ -4457,7 +4472,7 @@ function renderPawns(svg, board, pawns, lastSwap, lastCapture, lastHomeEntry) {
 // Bumped by hand each time a new build is produced — shown in the lobby so
 // it's obvious at a glance whether you're on the latest version, instead
 // of guessing from a stale browser tab or cache.
-const APP_VERSION = "v4.37";
+const APP_VERSION = "v4.39";
 
 let myColor = null;
 let myRoomId = null;
@@ -6118,7 +6133,12 @@ function renderGameShell() {
       el(
         "div",
         { class: "top-actions-row" },
-        el("div", { class: "top-actions-room" }, "Stanza " + myRoomId),
+        el(
+          "div",
+          { class: "top-actions-room" },
+          el("span", { class: "top-actions-room-label" }, "Stanza"),
+          el("span", { class: "top-actions-room-code" }, myRoomId)
+        ),
         el(
           "div",
           { class: "top-actions-icons" },
@@ -8148,6 +8168,7 @@ function closePicker() {
     if (currentState) renderChatFab(currentState.chat || []);
   }
   logPickerOpen = false;
+  _sevenRowKeys = null;
 }
 
 // Gesto di trascinamento sulla maniglia del picker: segue il dito 1:1 verso
@@ -8671,6 +8692,13 @@ function sevenAllocKey(color, pawnIndex) {
   return color + ":" + pawnIndex;
 }
 
+// Chiavi (colore:pawnIndex) delle righe attualmente disegnate nel foglio
+// del 7 — usata da renderSevenSplitter per capire se può limitarsi ad
+// aggiornare i numeri (vedi patchSevenSplitterNumbers) invece di
+// ricostruire tutto il foglio da capo a ogni tocco di -/+. Azzerata
+// quando il foglio si apre da zero o si chiude.
+let _sevenRowKeys = null;
+
 function openSevenSplitter(active, card) {
   // Non proporre pedine già in gioco che in realtà non potrebbero ricevere
   // nemmeno un passo in NESSUNA distribuzione valida (bloccate da una
@@ -8687,6 +8715,7 @@ function openSevenSplitter(active, card) {
     .filter((x) => leftoverPossible || sevenPawnCanReceiveSteps(currentState, active, x.pawnIndex));
   sevenAllocation = {};
   ownPawns.forEach((p) => (sevenAllocation[sevenAllocKey(p.color, p.pawnIndex)] = 0));
+  _sevenRowKeys = null; // forza una costruzione completa del foglio, è la prima apertura
   renderSevenSplitter(active, card, ownPawns);
 }
 
@@ -8726,17 +8755,35 @@ function renderSevenSplitter(active, card, ownPawns) {
 
   const total = Object.values(sevenAllocation).reduce((a, b) => a + b, 0);
   const remaining = 7 - total;
+  const allRows = ownPawns.concat(partnerPawns);
+  const newKeys = new Set(allRows.map((p) => sevenAllocKey(p.color, p.pawnIndex)));
+
+  // Se l'insieme di righe mostrate non è cambiato da prima (stesse pedine,
+  // solo i numeri sono da aggiornare) e il foglio è ancora davvero quello
+  // del 7, AGGIORNA SOLO I NUMERI invece di ricostruire tutto il foglio da
+  // capo con openPicker(). Prima ogni singolo tocco di -/+ rifaceva
+  // l'intero DOM del foglio (bottoni compresi): un tocco rapido successivo,
+  // se il dito era già appoggiato su un bottone appena sostituito da un
+  // bottone nuovo, a volte non veniva registrato — segnalato come "a volte
+  // il tocco non registra". Ricostruire da capo resta necessario solo
+  // quando le righe del compagno compaiono/spariscono (cambia la struttura
+  // del foglio), non per un semplice +1/-1.
+  if (_sevenRowKeys && setsEqual(_sevenRowKeys, newKeys) && document.getElementById("seven-remaining")) {
+    patchSevenSplitterNumbers(total, remaining, newKeys);
+    return;
+  }
+  _sevenRowKeys = newKeys;
 
   const row = (p) => {
     const key = sevenAllocKey(p.color, p.pawnIndex);
     const val = sevenAllocation[key] || 0;
     return el(
       "div",
-      { class: "seven-row" + (val > 0 ? " has-steps" : "") },
+      { class: "seven-row" + (val > 0 ? " has-steps" : ""), id: "seven-row-" + key },
       pipIcon(p.color, p.pawnIndex, 34),
       el("div", { class: "seven-row-text" }, sevenRowLabel(p.pos)),
       el("button", { class: "seven-step-btn", onclick: () => adjustSeven(active, card, ownPawns, p.color, p.pawnIndex, -1) }, "−"),
-      el("span", { class: "seven-val" }, String(val)),
+      el("span", { class: "seven-val", id: "seven-val-" + key }, String(val)),
       el("button", { class: "seven-step-btn", onclick: () => adjustSeven(active, card, ownPawns, p.color, p.pawnIndex, 1) }, "+")
     );
   };
@@ -8749,11 +8796,11 @@ function renderSevenSplitter(active, card, ownPawns) {
         "div",
         { style: "display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;" },
         el("div", { style: "font-weight:800;font-size:1.05rem;" }, "Distribuisci il 7"),
-        el("div", { class: "muted", style: "font-size:0.78rem;font-weight:700;" }, `Restano ${remaining}`)
+        el("div", { id: "seven-remaining", class: "muted", style: "font-size:0.78rem;font-weight:700;" }, `Restano ${remaining}`)
       ),
       el(
         "div",
-        { class: "seven-pips" },
+        { id: "seven-pips", class: "seven-pips" },
         Array.from({ length: 7 }, (_, i) => el("span", { class: "seven-pip" + (i < total ? " filled" : "") }))
       ),
       ownPawns.map(row),
@@ -8768,6 +8815,7 @@ function renderSevenSplitter(active, card, ownPawns) {
       el(
         "button",
         {
+          id: "seven-confirm-btn",
           class: "primary",
           style: "margin-bottom:10px;",
           disabled: remaining !== 0,
@@ -8777,11 +8825,42 @@ function renderSevenSplitter(active, card, ownPawns) {
       ),
       el(
         "button",
-        { class: "text-link-btn", style: "display:flex;width:100%;justify-content:center;", onclick: () => { sevenAllocation = null; closePicker(); } },
+        { class: "text-link-btn", style: "display:flex;width:100%;justify-content:center;", onclick: () => { sevenAllocation = null; _sevenRowKeys = null; closePicker(); } },
         "Annulla"
       )
     )
   );
+}
+
+function setsEqual(a, b) {
+  if (a.size !== b.size) return false;
+  for (const x of a) if (!b.has(x)) return false;
+  return true;
+}
+
+// Aggiorna solo i numeri del foglio del 7 già aperto (pallini, "Restano
+// N", il valore e l'evidenziazione di ogni riga, il bottone Conferma) —
+// senza toccare il DOM dei bottoni -/+ stessi, così un tocco rapido
+// successivo non rischia più di cadere su un bottone appena sostituito.
+function patchSevenSplitterNumbers(total, remaining, keys) {
+  const remainingEl = document.getElementById("seven-remaining");
+  if (remainingEl) remainingEl.textContent = `Restano ${remaining}`;
+  const pipsWrap = document.getElementById("seven-pips");
+  if (pipsWrap) {
+    Array.from(pipsWrap.children).forEach((pip, i) => pip.classList.toggle("filled", i < total));
+  }
+  keys.forEach((key) => {
+    const val = sevenAllocation[key] || 0;
+    const valEl = document.getElementById("seven-val-" + key);
+    if (valEl) valEl.textContent = String(val);
+    const rowEl = document.getElementById("seven-row-" + key);
+    if (rowEl) rowEl.classList.toggle("has-steps", val > 0);
+  });
+  const confirmBtn = document.getElementById("seven-confirm-btn");
+  if (confirmBtn) {
+    confirmBtn.disabled = remaining !== 0;
+    confirmBtn.textContent = remaining === 0 ? "Conferma" : `Conferma (mancano ${remaining} passi)`;
+  }
 }
 
 function adjustSeven(active, card, ownPawns, targetColor, pawnIndex, delta) {
