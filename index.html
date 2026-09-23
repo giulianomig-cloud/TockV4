@@ -3336,63 +3336,56 @@ async function updateState(roomId, mutatorFn) {
   // read-modify-write with a transaction so two players acting at the
   // same instant don't overwrite each other.
   const ref = roomRef(roomId);
-  // Firebase può invocare la callback della transazione con `current ===
-  // null` anche quando la stanza esiste benissimo sul server: succede
-  // quando questo client non ha ancora quel path in cache locale (es.
-  // nessun listener `watchRoom` attivo su di esso in quel momento) — la
-  // primissima chiamata parte "alla cieca" con null, e solo un tentativo
-  // NON abortito farebbe scattare il confronto col server che la
-  // correggerebbe. Restituire `undefined` (come si fa per abortire)
-  // interrompe subito la transazione PRIMA di quel confronto: si otteneva
-  // quindi un falso "stanza cancellata" anche per stanze appena create,
-  // semplicemente perché non ancora in cache (bug introdotto insieme al
-  // rilevamento vero e proprio). Per questo, prima di dichiarare la stanza
-  // davvero sparita, si verifica con una lettura diretta e — se in realtà
-  // esiste — si riprova (stavolta il client la trova già in cache).
-  for (let attempt = 0; attempt < 2; attempt++) {
-    let caughtError = null;
-    let justWon = false;
-    let roomMissing = false;
-    const result = await ref
-      .transaction((current) => {
-        if (current === null) {
-          roomMissing = true;
-          return; // undefined -> abort this attempt (non necessariamente la stanza)
-        }
-        try {
-          const copy = normalizeState(JSON.parse(JSON.stringify(current)));
-          const wasFinished = !!copy.winnerTeam;
-          mutatorFn(copy);
-          // riflette solo l'ULTIMO tentativo della transazione (in caso di
-          // retry per contesa la callback può girare più volte): se quello che
-          // viene poi davvero confermato è quello che ha fatto scattare la
-          // vittoria, va bene contarlo una volta sola qui sotto.
-          justWon = !wasFinished && !!copy.winnerTeam;
-          return copy;
-        } catch (e) {
-          caughtError = e;
-          return undefined; // abort this transaction attempt
-        }
-      })
-      .catch((e) => {
+  let caughtError = null;
+  let justWon = false;
+  const result = await ref
+    .transaction((current) => {
+      // `current === null` qui non è una prova affidabile che la stanza
+      // sia sparita: può capitare anche quando questo client semplicemente
+      // non ha ancora quel path in cache locale (es. subito dopo essere
+      // entrati, prima che un ascoltatore stabile l'abbia letto). Si
+      // aborta comunque questo TENTATIVO (Firebase può comunque rifare da
+      // solo la callback con lo stato vero se la scrittura va in
+      // conflitto), ma il verdetto "davvero cancellata" si decide SOLO
+      // dopo, con una lettura diretta indipendente — vedi sotto.
+      if (current === null) return;
+      try {
+        const copy = normalizeState(JSON.parse(JSON.stringify(current)));
+        const wasFinished = !!copy.winnerTeam;
+        mutatorFn(copy);
+        // riflette solo l'ULTIMO tentativo della transazione (in caso di
+        // retry per contesa la callback può girare più volte): se quello che
+        // viene poi davvero confermato è quello che ha fatto scattare la
+        // vittoria, va bene contarlo una volta sola qui sotto.
+        justWon = !wasFinished && !!copy.winnerTeam;
+        return copy;
+      } catch (e) {
         caughtError = e;
-        return null;
-      });
-    if (roomMissing) {
-      const snap = await ref.get().catch(() => null);
-      if (snap && snap.exists() && attempt === 0) continue; // falso allarme: esiste, riprova con la cache aggiornata
+        return undefined; // abort this transaction attempt
+      }
+    })
+    .catch((e) => {
+      caughtError = e;
+      return null;
+    });
+  if (caughtError) {
+    console.error("updateState error:", caughtError);
+    throw caughtError;
+  }
+  if (result && result.committed === false) {
+    // La transazione non ha scritto nulla: può essere perché la callback
+    // ha visto `current === null` (stanza davvero cancellata, OPPURE solo
+    // non ancora in cache — vedi sopra) o per un conflitto di scrittura.
+    // Una lettura diretta e indipendente qui toglie ogni ambiguità, invece
+    // di indovinare dal solo esito della transazione.
+    const snap = await ref.get().catch(() => null);
+    if (!snap || !snap.exists()) {
       throw Object.assign(new Error("Questa stanza non esiste più (forse è stata cancellata)."), { code: "ROOM_MISSING" });
     }
-    if (caughtError) {
-      console.error("updateState error:", caughtError);
-      throw caughtError;
-    }
-    if (result && result.committed === false) {
-      throw new Error("La mossa non è stata salvata (transazione non completata). Riprova.");
-    }
-    if (justWon && result && result.committed !== false) incrementStat("gamesFinished");
-    return result;
+    throw new Error("La mossa non è stata salvata (transazione non completata). Riprova.");
   }
+  if (justWon && result && result.committed !== false) incrementStat("gamesFinished");
+  return result;
 }
 
 </script>
@@ -4429,7 +4422,7 @@ function renderPawns(svg, board, pawns, lastSwap, lastCapture, lastHomeEntry) {
 // Bumped by hand each time a new build is produced — shown in the lobby so
 // it's obvious at a glance whether you're on the latest version, instead
 // of guessing from a stale browser tab or cache.
-const APP_VERSION = "v4.16";
+const APP_VERSION = "v4.17";
 
 let myColor = null;
 let myRoomId = null;
@@ -5423,24 +5416,38 @@ async function joinDraftRoom(roomId) {
   myName = name;
   myToken = getOrCreateRoomToken(roomId);
 
-  try {
-    const ref = roomRef(roomId);
-    const snap = await ref.get();
-    if (!snap.exists()) {
-      const state = newGameState({}, "draw");
-      state.draft.players[myToken] = myName;
-      state.draft.order.push(myToken);
-      await writeState(roomId, state);
-    } else {
-      const existing = normalizeState(snap.val());
-      if (existing.roomMode !== "draw") {
-        showToast("Questa stanza è già in modalità manuale — scegli il colore.");
-        renderManualLobby(roomId, existing.players || {});
-        return;
-      }
-      await updateState(roomId, (state) => {
+  // Un'UNICA transazione atomica (leggi-controlla-scrivi), non più un
+  // get() separato seguito da un set()/updateState(): quel prima/dopo
+  // lasciava una finestra in cui la stanza poteva risultare "esistente"
+  // al get() iniziale ma "non ancora in cache" un istante dopo dentro la
+  // transazione (tipico subito dopo essere entrati, prima che un
+  // ascoltatore stabile l'abbia letta) — capitava un falso "questa stanza
+  // non esiste più" anche su una stanza appena creata. Qui, come già in
+  // joinManualRoom, `current === null` non è trattato come un errore: si
+  // prova a creare la stanza da zero, e se in realtà esisteva già (solo
+  // non in cache), Firebase stesso rifiuta il tentativo e ripete la
+  // callback con lo stato vero — nessuna finestra di corsa critica.
+  const ref = roomRef(roomId);
+  let blockedReason = null; // "wrongMode" | "full" | "nameTaken" | null
+  let caughtError = null;
+  const result = await ref
+    .transaction((current) => {
+      blockedReason = null;
+      try {
+        if (current === null) {
+          const state = newGameState({}, "draw");
+          state.draft.players[myToken] = myName;
+          state.draft.order.push(myToken);
+          return state;
+        }
+        const state = normalizeState(JSON.parse(JSON.stringify(current)));
+        if (state.roomMode !== "draw") {
+          blockedReason = "wrongMode";
+          return undefined;
+        }
         if (!state.draft.players[myToken] && Object.keys(state.draft.players).length >= 4) {
-          throw new Error("la stanza è già piena (4 giocatori)");
+          blockedReason = "full";
+          return undefined;
         }
         // Due giocatori con lo stesso nome mandano in confusione il
         // rientro-per-nome più avanti (non saprebbe a chi dei due
@@ -5449,15 +5456,44 @@ async function joinDraftRoom(roomId) {
           ([tok, n]) => tok !== myToken && n && n.trim().toLowerCase() === myName.trim().toLowerCase()
         );
         if (nameTaken) {
-          throw new Error(`"${myName}" è già stato usato da un altro giocatore in questa stanza. Scegli un nome diverso (es. aggiungi un'iniziale).`);
+          blockedReason = "nameTaken";
+          return undefined;
         }
         if (!state.draft.players[myToken]) state.draft.order.push(myToken);
         state.draft.players[myToken] = myName;
-      });
-    }
-  } catch (e) {
-    showToast("Non è entrato: " + describeError(e));
-    console.error(e);
+        return state;
+      } catch (e) {
+        caughtError = e;
+        return undefined;
+      }
+    })
+    .catch((e) => {
+      caughtError = e;
+      return null;
+    });
+
+  if (blockedReason === "wrongMode") {
+    const snap = await ref.get().catch(() => null);
+    const existing = snap && snap.val() ? normalizeState(snap.val()) : null;
+    showToast("Questa stanza è già in modalità manuale — scegli il colore.");
+    renderManualLobby(roomId, (existing && existing.players) || {});
+    return;
+  }
+  if (blockedReason === "full") {
+    showToast("Non è entrato: la stanza è già piena (4 giocatori).");
+    return;
+  }
+  if (blockedReason === "nameTaken") {
+    showToast(`"${myName}" è già stato usato da un altro giocatore in questa stanza. Scegli un nome diverso (es. aggiungi un'iniziale).`);
+    return;
+  }
+  if (caughtError) {
+    showToast("Non è entrato: " + describeError(caughtError));
+    console.error(caughtError);
+    return;
+  }
+  if (result && result.committed === false) {
+    showToast("Non è entrato: richiesta non completata. Riprova.");
     return;
   }
 
