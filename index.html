@@ -654,6 +654,7 @@ button.danger:active {
   transition: background .12s ease, border-color .12s ease;
 }
 .icon-btn:hover { background: #F3EBD8; border-color: var(--gold); }
+.icon-btn-muted { background: #F3EBD8; border-color: #C99A3A; }
 .sound-test-btn {
   display: inline-flex;
   align-items: center;
@@ -811,6 +812,18 @@ button.danger:active {
   margin-bottom: 10px;
 }
 
+/* Mentre una mossa è in salvataggio verso Firebase (vedi moveInFlight):
+   disattiva la mano e lo splitter/picker ancora aperto così non si può
+   avviare una seconda azione in parallelo con la prima non ancora
+   confermata dal server — un tap in più mostra comunque un toast di
+   avviso (vedi playMove/onCardClick), questo è solo il rinforzo visivo. */
+.move-in-flight .hand-row,
+.move-in-flight #picker-wrap {
+  pointer-events: none;
+  opacity: 0.6;
+  transition: opacity 0.15s ease;
+}
+
 
 .card-btn {
   min-width: 54px;
@@ -935,6 +948,78 @@ button.danger:active {
   margin-top: 0;
 }
 
+/* Toast: sostituisce alert() per errori/messaggi — non blocca il resto
+   della pagina (vedi showToast/dismissToast). z-index sopra i picker,
+   così un messaggio (es. un errore di rete) resta leggibile anche se
+   spunta mentre un picker è aperto. */
+.toast-overlay {
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  max-width: 480px; margin: 0 auto;
+  z-index: 500;
+  padding: 0 18px calc(18px + env(safe-area-inset-bottom));
+  display: flex; justify-content: center;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(14px);
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+.toast-overlay.show { opacity: 1; transform: translateY(0); pointer-events: auto; }
+.toast-box {
+  width: 100%;
+  background: var(--ink);
+  color: var(--cream);
+  border-radius: 16px;
+  padding: 14px 14px 14px 18px;
+  margin-bottom: 14px;
+  display: flex; align-items: center; gap: 12px;
+  box-shadow: 0 10px 28px rgba(36,28,21,0.4);
+}
+.toast-text { flex: 1; font-size: 0.88rem; font-weight: 600; line-height: 1.4; }
+.toast-ok-btn {
+  flex-shrink: 0;
+  background: var(--gold-metallic);
+  color: var(--ink);
+  border: none; border-radius: 999px;
+  padding: 9px 20px;
+  font-weight: 800; font-size: 0.85rem;
+  cursor: pointer;
+}
+
+/* Banner "nuova versione disponibile" — vedi checkForNewVersion. In alto
+   (non in basso come toast/picker) così non si confonde con quelli e non
+   copre i controlli di gioco; non è mai un reload forzato, solo un avviso
+   discreto con un tasto per farlo quando si vuole. */
+.version-banner {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 600;
+  padding: calc(10px + env(safe-area-inset-top)) 14px 10px;
+  background: var(--gold-metallic);
+  color: var(--ink);
+  display: flex; align-items: center; gap: 10px;
+  box-shadow: 0 4px 14px rgba(36,28,21,0.25);
+  animation: versionBannerSlideDown 0.25s ease-out;
+}
+@keyframes versionBannerSlideDown {
+  from { opacity: 0; transform: translateY(-100%); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.version-banner-text { flex: 1; font-size: 0.82rem; font-weight: 700; }
+.version-banner-btn {
+  flex-shrink: 0;
+  background: var(--ink); color: var(--cream);
+  border: none; border-radius: 999px;
+  padding: 7px 16px; font-weight: 800; font-size: 0.8rem;
+  cursor: pointer;
+}
+.version-banner-dismiss {
+  flex-shrink: 0;
+  background: transparent; border: none;
+  color: var(--ink); font-size: 1rem; font-weight: 800;
+  cursor: pointer; padding: 4px 6px; opacity: 0.7;
+}
+
 button.secondary.selected {
   background: var(--gold-metallic);
   border-color: var(--ink);
@@ -959,9 +1044,10 @@ button.secondary.selected {
 .seven-row.has-steps { background: #FBF1D8; border-color: var(--gold); }
 .seven-row-text { flex-grow: 1; font-size: 0.84rem; font-weight: 700; color: #5A5145; }
 .seven-step-btn {
-  width: 30px; height: 30px; border-radius: 50%;
+  width: 44px; height: 44px; border-radius: 50%;
   border: 1.5px solid var(--panel-border); background: var(--cream);
-  font-size: 1rem; font-weight: 800; color: #5A5145; cursor: pointer;
+  font-size: 1.15rem; font-weight: 800; color: #5A5145; cursor: pointer;
+  flex-shrink: 0;
 }
 .seven-row.has-steps .seven-step-btn { background: #FFFFFF; }
 .seven-val {
@@ -3243,9 +3329,22 @@ async function updateState(roomId, mutatorFn) {
   const ref = roomRef(roomId);
   let caughtError = null;
   let justWon = false;
+  let roomMissing = false;
   const result = await ref
     .transaction((current) => {
-      if (current === null) return current;
+      if (current === null) {
+        // La stanza non esiste (più) — es. cancellata a mano dalla console
+        // Firebase mentre qualcuno ci stava ancora giocando dentro. Prima
+        // si restituiva silenziosamente `current` (cioè null): la
+        // transazione "committava" senza aver applicato nessuna mossa, e
+        // chi aveva giocato non aveva alcun modo di saperlo — restava con
+        // l'ultima schermata vista, senza spiegazione. Ora si aborta la
+        // transazione con un errore dedicato e riconoscibile (roomMissing),
+        // così il chiamante può mostrare un messaggio chiaro invece del
+        // generico "mossa non salvata".
+        roomMissing = true;
+        return; // undefined -> abort
+      }
       try {
         const copy = normalizeState(JSON.parse(JSON.stringify(current)));
         const wasFinished = !!copy.winnerTeam;
@@ -3265,6 +3364,9 @@ async function updateState(roomId, mutatorFn) {
       caughtError = e;
       return null;
     });
+  if (roomMissing) {
+    throw Object.assign(new Error("Questa stanza non esiste più (forse è stata cancellata)."), { code: "ROOM_MISSING" });
+  }
   if (caughtError) {
     console.error("updateState error:", caughtError);
     throw caughtError;
@@ -4310,7 +4412,7 @@ function renderPawns(svg, board, pawns, lastSwap, lastCapture, lastHomeEntry) {
 // Bumped by hand each time a new build is produced — shown in the lobby so
 // it's obvious at a glance whether you're on the latest version, instead
 // of guessing from a stale browser tab or cache.
-const APP_VERSION = "v4.13";
+const APP_VERSION = "v4.14";
 
 let myColor = null;
 let myRoomId = null;
@@ -4320,6 +4422,17 @@ let boardSvg = null;
 let currentState = null;
 let sevenAllocation = null; // {pawnIndex: steps} while the 7-splitter is open
 let jackPicked = []; // selected {color,pawnIndex} while the Jack picker is open
+// Vero mentre una mossa è in viaggio verso Firebase (playMove/runUpdate),
+// cioè tra il tap che la conferma e la risposta del server. Evita che un
+// doppio tap (o un tap su un'altra carta mentre la prima mossa non è
+// ancora salvata) parta una seconda mossa in parallelo — sul multiplayer
+// in tempo reale una doppia scrittura concorrente potrebbe applicare due
+// mosse diverse sullo stesso turno. Vedi setMoveInFlight/withMoveLock.
+let moveInFlight = false;
+function setMoveInFlight(active) {
+  moveInFlight = active;
+  document.body.classList.toggle("move-in-flight", active);
+}
 let draftAnimShown = { pairDraw: false }; // evita di rifare l'animazione ad ogni re-render
 // Ogni chiamata a renderPairDrawScreen incrementa questo contatore. Serve a
 // invalidare un'animazione "vecchia" rimasta in esecuzione in background
@@ -4478,7 +4591,7 @@ async function shareInviteLink(roomId) {
   }
   try {
     await navigator.clipboard.writeText(link);
-    alert("Link copiato! Incollalo dove vuoi per invitare i tuoi amici.");
+    showToast("Link copiato! Incollalo dove vuoi per invitare i tuoi amici.");
     return;
   } catch (e) {
     // niente clipboard API (es. contesto non sicuro): ultima spiaggia.
@@ -4489,14 +4602,14 @@ async function shareInviteLink(roomId) {
 async function continueFromRoomCode() {
   unlockAudio();
   const roomId = $("#room-input").value.trim().toUpperCase();
-  if (!roomId) return alert("Inserisci un codice stanza.");
+  if (!roomId) return showToast("Inserisci un codice stanza.");
   myRoomId = roomId;
 
   let snap;
   try {
     snap = await roomRef(roomId).get();
   } catch (e) {
-    alert("Non riesco a contattare il server, riprova.");
+    showToast("Non riesco a contattare il server, riprova.");
     console.error(e);
     return;
   }
@@ -4587,7 +4700,7 @@ async function pickRoomMode(roomId, mode) {
   try {
     state = await claimRoomMode(roomId, mode);
   } catch (e) {
-    alert("Non riesco a creare la stanza, riprova.");
+    showToast("Non riesco a creare la stanza, riprova.");
     console.error(e);
     return;
   }
@@ -4627,7 +4740,7 @@ function renderNameRecoveryScreen(roomId) {
 
 async function recoverByName(roomId) {
   const name = $("#recover-name-input").value.trim();
-  if (!name) return alert("Scrivi il tuo nome.");
+  if (!name) return showToast("Scrivi il tuo nome.");
   try {
     const snap = await roomRef(roomId).get();
     const existing = normalizeState(snap.val());
@@ -4638,7 +4751,7 @@ async function recoverByName(roomId) {
         existing.players[c].name.trim().toLowerCase() === name.trim().toLowerCase()
     );
     if (!match) {
-      alert("Non trovo nessun giocatore con questo nome in questa stanza. Controlla di averlo scritto esattamente come la prima volta, oppure continua come nuovo giocatore.");
+      showToast("Non trovo nessun giocatore con questo nome in questa stanza. Controlla di averlo scritto esattamente come la prima volta, oppure continua come nuovo giocatore.");
       return;
     }
     const claim = existing.players[match];
@@ -4653,7 +4766,7 @@ async function recoverByName(roomId) {
     watchRoom(roomId, onStateChange);
     renderGameShell();
   } catch (e) {
-    alert("Non sono riuscito a farti rientrare: " + e.message);
+    showToast("Non sono riuscito a farti rientrare: " + describeError(e));
     console.error(e);
   }
 }
@@ -4668,7 +4781,7 @@ async function continueAsNewPlayer(roomId) {
       renderManualLobby(roomId, existing.players || {});
     }
   } catch (e) {
-    alert("Non riesco a contattare il server, riprova.");
+    showToast("Non riesco a contattare il server, riprova.");
     console.error(e);
   }
 }
@@ -5005,7 +5118,7 @@ function selectColor(c) {
 async function joinManualRoom(roomId) {
   unlockAudio();
   const name = $("#name-input").value.trim();
-  if (!myColor) return alert("Scegli un colore.");
+  if (!myColor) return showToast("Scegli un colore.");
   myRoomId = roomId;
   myName = name || colorLabel(myColor);
 
@@ -5072,20 +5185,20 @@ async function joinManualRoom(roomId) {
     });
 
   if (blockedReason && blockedReason.kind === "color") {
-    alert(`Il colore ${colorLabel(myColor)} è già stato scelto da ${blockedReason.by} in questa stanza. Scegline un altro, oppure rientra usando esattamente lo stesso nome per riprenderlo.`);
+    showToast(`Il colore ${colorLabel(myColor)} è già stato scelto da ${blockedReason.by} in questa stanza. Scegline un altro, oppure rientra usando esattamente lo stesso nome per riprenderlo.`);
     return;
   }
   if (blockedReason && blockedReason.kind === "name") {
-    alert(`Il nome "${myName}" è già usato da un altro giocatore in questa stanza. Scegline uno diverso (es. aggiungi un'iniziale).`);
+    showToast(`Il nome "${myName}" è già usato da un altro giocatore in questa stanza. Scegline uno diverso (es. aggiungi un'iniziale).`);
     return;
   }
   if (caughtError) {
     console.error("joinManualRoom error:", caughtError);
-    alert("Non è stato possibile entrare nella stanza. Riprova.");
+    showToast("Non è stato possibile entrare nella stanza. Riprova.");
     return;
   }
   if (!result || result.committed === false) {
-    alert("Non è stato possibile entrare nella stanza (richiesta non completata). Riprova.");
+    showToast("Non è stato possibile entrare nella stanza (richiesta non completata). Riprova.");
     return;
   }
 
@@ -5123,7 +5236,7 @@ async function assignBotToColor(roomId, color, onDone, botLevel) {
       });
     }
   } catch (e) {
-    alert("Non riesco ad assegnare il computer: " + e.message);
+    showToast("Non riesco ad assegnare il computer: " + describeError(e));
     return;
   }
   if (onDone) { onDone(); return; }
@@ -5142,7 +5255,7 @@ async function removeBotFromColor(roomId, color, onDone) {
       delete state.players[color];
     });
   } catch (e) {
-    alert("Errore: " + e.message);
+    showToast("Non riesco a togliere il computer: " + describeError(e));
     return;
   }
   if (onDone) { onDone(); return; }
@@ -5222,7 +5335,7 @@ function renderDraftNameScreen(roomId) {
 async function joinDraftRoom(roomId) {
   unlockAudio();
   const name = $("#name-input").value.trim();
-  if (!name) return alert("Inserisci il tuo nome.");
+  if (!name) return showToast("Inserisci il tuo nome.");
   myRoomId = roomId;
   myName = name;
   myToken = getOrCreateRoomToken(roomId);
@@ -5238,7 +5351,7 @@ async function joinDraftRoom(roomId) {
     } else {
       const existing = normalizeState(snap.val());
       if (existing.roomMode !== "draw") {
-        alert("Questa stanza è già in modalità manuale — scegli il colore.");
+        showToast("Questa stanza è già in modalità manuale — scegli il colore.");
         renderManualLobby(roomId, existing.players || {});
         return;
       }
@@ -5260,7 +5373,7 @@ async function joinDraftRoom(roomId) {
       });
     }
   } catch (e) {
-    alert("Non è entrato: " + e.message);
+    showToast("Non è entrato: " + describeError(e));
     console.error(e);
     return;
   }
@@ -5553,7 +5666,7 @@ async function pickSoloColor(color) {
       }
     });
   } catch (e) {
-    alert(e.message);
+    showToast(describeError(e));
   }
 }
 
@@ -5636,6 +5749,11 @@ function renderGameShell() {
           { class: "top-bar-actions" },
           el(
             "button",
+            { id: "sound-toggle-btn", class: "icon-btn" + (soundMuted ? " icon-btn-muted" : ""), "aria-label": soundMuted ? "Riattiva audio" : "Disattiva audio", onclick: toggleSoundMuted },
+            soundIconSvg(soundMuted)
+          ),
+          el(
+            "button",
             { class: "icon-btn", "aria-label": "Invita amici", onclick: () => shareInviteLink(myRoomId) },
             svgIcon(14, 14, "0 0 24 24", "#5A5145", 2.2, [
               ["circle", { cx: 18, cy: 5, r: 3 }],
@@ -5714,6 +5832,44 @@ function watchConnection() {
 // only allows audio after a real user tap, so the AudioContext is created
 // lazily and "unlocked" on the first tap (joining the room).
 let audioCtx = null;
+// Preferenza "audio disattivato", persistita per rimanere valida anche
+// dopo un ricaricamento o su una nuova partita — letta una volta sola
+// all'avvio, poi tenuta in questa variabile per non rileggere
+// localStorage ad ogni suono.
+let soundMuted = false;
+try { soundMuted = localStorage.getItem("tock-sound-muted") === "1"; } catch (e) {}
+function setSoundMuted(muted) {
+  soundMuted = muted;
+  try { localStorage.setItem("tock-sound-muted", muted ? "1" : "0"); } catch (e) {}
+  updateSoundToggleBtn();
+}
+function toggleSoundMuted() {
+  setSoundMuted(!soundMuted);
+  keepAudioAlive();
+}
+// Aggiorna l'icona/aria-label del bottone toggle nella top-bar, se presente
+// in questo momento (non lo è prima che la partita sia iniziata).
+function updateSoundToggleBtn() {
+  const btn = document.getElementById("sound-toggle-btn");
+  if (!btn) return;
+  btn.innerHTML = "";
+  btn.appendChild(soundIconSvg(soundMuted));
+  btn.setAttribute("aria-label", soundMuted ? "Riattiva audio" : "Disattiva audio");
+  btn.classList.toggle("icon-btn-muted", soundMuted);
+}
+function soundIconSvg(muted) {
+  return muted
+    ? svgIcon(14, 14, "0 0 24 24", "#5A5145", 2.2, [
+        ["polygon", { points: "11 5 6 9 2 9 2 15 6 15 11 19 11 5" }],
+        ["line", { x1: 23, y1: 9, x2: 17, y2: 15 }],
+        ["line", { x1: 17, y1: 9, x2: 23, y2: 15 }],
+      ])
+    : svgIcon(14, 14, "0 0 24 24", "#5A5145", 2.2, [
+        ["polygon", { points: "11 5 6 9 2 9 2 15 6 15 11 19 11 5" }],
+        ["path", { d: "M15.5 8.5a5 5 0 0 1 0 7" }],
+        ["path", { d: "M18.5 5.5a9 9 0 0 1 0 13" }],
+      ]);
+}
 // A silent audio clip, looped continuously in the background — often more
 // reliable than WebAudio alone for keeping iOS Safari's audio channel
 // open, which is why it's started (once) in the very same tap that first
@@ -5807,6 +5963,7 @@ setInterval(() => {
 }, 3000);
 
 function playSound(name) {
+  if (soundMuted) return;
   if (!audioCtx) return;
   if (audioCtx.state === "suspended") audioCtx.resume().catch(() => {});
   const recipe = SOUND_RECIPES[name];
@@ -5818,7 +5975,7 @@ function playSound(name) {
 // from "audio works but a specific event isn't triggering it".
 function testSound() {
   unlockAudio();
-  if (!audioCtx) { alert("Il browser non supporta l'audio qui."); return; }
+  if (!audioCtx) { showToast("Il browser non supporta l'audio qui."); return; }
   beep(523, 0, 150, "sine", 0.5);
   beep(659, 0.13, 150, "sine", 0.5);
   beep(784, 0.26, 220, "sine", 0.5);
@@ -6883,7 +7040,7 @@ async function startGame() {
       }
     });
   } catch (e) {
-    alert("Non è partita: " + e.message);
+    showToast("Non è partita: " + describeError(e));
     console.error(e);
   }
 }
@@ -6962,7 +7119,7 @@ async function sendExchangeCard(card) {
       submitExchangeCard(state, myColor, card);
     });
   } catch (e) {
-    alert("Errore nello scambio: " + e.message);
+    showToast("Errore nello scambio: " + describeError(e));
   }
 }
 
@@ -7285,6 +7442,10 @@ function cardLabel(card) {
 // if it genuinely has no legal use — it is burned right away. Either way
 // the turn advances by exactly one card.
 async function onCardClick(card, evt) {
+  if (moveInFlight) {
+    showToast("Aspetta, la mossa precedente è ancora in salvataggio...");
+    return;
+  }
   keepAudioAlive();
   const active = activeColorFor(currentState, myColor);
   const options = legalMovesForCard(currentState, active, card);
@@ -7298,14 +7459,21 @@ async function onCardClick(card, evt) {
       btn.classList.add("card-burning");
       await new Promise((resolve) => setTimeout(resolve, 380));
     }
-    await runUpdate((state) => {
-      // Burn from the current turn's OWN hand (same fix as applyMove — see
-      // its comment). Using `active` here was the bug: when a player's
-      // pawns are all home and they're playing a partner's turn, the card
-      // never actually left their hand, so it kept reappearing/blocking.
-      burnOneCard(state, state.turnColor, card);
-      advanceTurn(state);
-    });
+    setMoveInFlight(true);
+    try {
+      await runUpdate((state) => {
+        // Burn from the current turn's OWN hand (same fix as applyMove — see
+        // its comment). Using `active` here was the bug: when a player's
+        // pawns are all home and they're playing a partner's turn, the card
+        // never actually left their hand, so it kept reappearing/blocking.
+        burnOneCard(state, state.turnColor, card);
+        advanceTurn(state);
+      });
+    } catch (e) {
+      console.error(e); // runUpdate ha già mostrato un toast comprensibile
+    } finally {
+      setMoveInFlight(false);
+    }
     return;
   }
 
@@ -7510,6 +7678,90 @@ function setupPickerPeekDrag(wrap, handleZone) {
   handleZone.addEventListener("pointercancel", onUp);
 }
 
+// ---- Toast (sostituisce alert() per errori/messaggi) --------------------
+// alert() nativo blocca l'intera pagina finché non lo chiudi — su mobile è
+// particolarmente pesante (stile di sistema fuori tema, e può bloccare
+// anche gli aggiornamenti in arrivo da Firebase mentre è aperto). Questo
+// toast mostra lo stesso messaggio in un pannello in basso, con un tasto
+// "OK" da toccare per chiuderlo (niente auto-dismiss: un errore importante
+// — es. "non riesco a contattare il server" — non deve poter sparire da
+// solo prima che l'utente l'abbia letto), ma senza bloccare nient'altro
+// sotto. Le chiamate si accodano (come farebbero comunque una sequenza di
+// alert() nativi, che si bloccano l'uno con l'altro) così due messaggi
+// ravvicinati non si sovrappongono mai sullo schermo.
+let toastQueue = [];
+let toastShowing = false;
+
+function showToast(message) {
+  toastQueue.push(message);
+  if (!toastShowing) renderNextToast();
+}
+
+function ensureToastWrap() {
+  let wrap = document.getElementById("toast-wrap");
+  if (!wrap) {
+    wrap = document.createElement("div");
+    wrap.id = "toast-wrap";
+    document.body.appendChild(wrap);
+  }
+  return wrap;
+}
+
+function renderNextToast() {
+  if (toastQueue.length === 0) {
+    toastShowing = false;
+    const wrap = document.getElementById("toast-wrap");
+    if (wrap) wrap.innerHTML = ""; // niente coda: non lasciare in giro l'ultimo box già dismesso (solo invisibile via CSS)
+    return;
+  }
+  toastShowing = true;
+  const message = toastQueue.shift();
+  const wrap = ensureToastWrap();
+  wrap.innerHTML = "";
+  wrap.className = "toast-overlay";
+  wrap.appendChild(
+    el(
+      "div",
+      { class: "toast-box" },
+      el("div", { class: "toast-text" }, message),
+      el("button", { class: "toast-ok-btn", onclick: dismissToast }, "OK")
+    )
+  );
+  // Un frame dopo l'inserimento, non nello stesso — altrimenti il browser
+  // "unisce" partenza (opacity:0) e arrivo (show) in un solo passaggio e
+  // l'animazione di comparsa non si vede mai.
+  requestAnimationFrame(() => wrap.classList.add("show"));
+}
+
+function dismissToast() {
+  const wrap = document.getElementById("toast-wrap");
+  if (wrap) wrap.classList.remove("show");
+  setTimeout(renderNextToast, 180); // lascia respirare la piccola animazione di uscita prima del prossimo in coda
+}
+
+// Trasforma un errore "tecnico" in una frase comprensibile da mostrare nel
+// toast, invece del solito "Errore: " + e.message grezzo — che per un
+// errore di rete o di permessi di Firebase è spesso un codice in inglese
+// senza alcun contesto (es. "PERMISSION_DENIED", "Failed to fetch"). I
+// nostri stessi errori "di gioco" (regole violate, nome già preso,
+// transazione respinta — vedi es. updateState/applyJackSwap/
+// sevenValidateDistribution) hanno già un messaggio scritto apposta per
+// essere letto da un giocatore, quindi quello passa così com'è.
+function describeError(e) {
+  if (typeof navigator !== "undefined" && navigator.onLine === false) {
+    return "sei offline: controlla la connessione e riprova.";
+  }
+  const code = ((e && e.code) || "").toString().toUpperCase();
+  const msg = ((e && e.message) || "").toString();
+  if (code === "PERMISSION_DENIED") {
+    return "il server ha rifiutato la richiesta. Riprova, e se continua segnalalo.";
+  }
+  if (code === "UNAVAILABLE" || code === "NETWORK_ERROR" || /network|fetch|timeout/i.test(msg)) {
+    return "non riesco a contattare il server. Controlla la connessione e riprova.";
+  }
+  return msg || "errore sconosciuto. Riprova.";
+}
+
 // ---- Regolamento richiamabile in partita --------------------------------
 // Finora le regole non erano consultabili da nessuna parte una volta
 // entrati in partita — utile soprattutto per chi le dimentica a metà
@@ -7526,7 +7778,7 @@ const RULES_SECTIONS = [
   },
   {
     title: "Cosa fa ogni carta",
-    body: "A = fa entrare una pedina in gioco (oppure vale 1 casella avanti se le hai già tutte in gioco). K = entra in gioco (oppure vale 13 avanti). Q = 12 avanti. J = scambia di posto due pedine qualsiasi sul percorso, anche avversarie (non quelle protette sulla propria base o già in casa). 7 = si può giocare intero su una pedina o dividerlo tra più pedine proprie. 4 = 4 caselle INDIETRO. Le altre (2,3,5,6,8,9,10) = avanti del valore indicato.",
+    body: "A = fa entrare una pedina in gioco (oppure vale 1 casella avanti se le hai già tutte in gioco). K = entra in gioco (oppure vale 13 avanti). Q = 12 avanti. J = scambia di posto due pedine qualsiasi sul percorso, anche avversarie (non quelle protette sulla propria base o già in casa). 7 = si può giocare intero su una pedina o dividerlo tra più pedine proprie; se una parte del 7 manda in casa tutte le tue pedine, i passi rimasti possono continuare sulle pedine del tuo compagno. 4 = 4 caselle INDIETRO. Le altre (2,3,5,6,8,9,10) = avanti del valore indicato.",
   },
   {
     title: "Mangiare e casella base",
@@ -7570,7 +7822,7 @@ function replayLastMove() {
     currentState.lastHomeEntry,
   ].filter((e) => e && e.ts);
   if (candidates.length === 0) {
-    alert("Non c'è ancora nessuna mossa da rivedere in questa partita.");
+    showToast("Non c'è ancora nessuna mossa da rivedere in questa partita.");
     return;
   }
   candidates.sort((a, b) => b.ts - a.ts);
@@ -7673,17 +7925,27 @@ function optionSubtitle(opt) {
 }
 
 async function playMove(active, card, move) {
+  if (moveInFlight) {
+    showToast("Aspetta, la mossa precedente è ancora in salvataggio...");
+    return;
+  }
   if (isSelfCapture(currentState, active, move)) {
     if (!confirm("Questa mossa mangia una tua pedina. Confermi?")) return;
   }
+  setMoveInFlight(true);
   try {
     await runUpdate((state) => {
       applyMove(state, active, card, move);
       if (state.phase !== "finished") advanceTurn(state);
     });
   } catch (e) {
-    alert("Errore nel salvare la mossa: " + e.message);
+    // runUpdate ha già mostrato un toast con un messaggio comprensibile
+    // (vedi sotto) — qui si limita a evitare una unhandledrejection, non
+    // ne mostra un secondo (prima capitava: due toast identici in coda
+    // uno via l'altro per lo stesso identico errore).
     console.error(e);
+  } finally {
+    setMoveInFlight(false);
   }
 }
 
@@ -7705,9 +7967,9 @@ async function runUpdate(mutatorFn) {
   try {
     await updateState(myRoomId, mutatorFn);
   } catch (e) {
-    alert("Errore: " + e.message);
+    showToast("Non sono riuscito a salvare la mossa: " + describeError(e));
     console.error(e);
-    throw e;
+    throw e; // il chiamante può comunque reagire (es. annullare un'animazione già avviata)
   }
 }
 
@@ -7949,7 +8211,7 @@ async function confirmSeven(active, card) {
     .filter((d) => d.steps > 0);
   const valid = sevenValidateDistribution(currentState, active, distribution);
   if (!valid) {
-    alert("Questa distribuzione non è valida (percorso bloccato o casella-casa occupata). Prova un'altra combinazione.");
+    showToast("Questa distribuzione non è valida (percorso bloccato o casella-casa occupata). Prova un'altra combinazione.");
     return;
   }
   closePicker();
@@ -8397,6 +8659,51 @@ if ("serviceWorker" in navigator) {
     navigator.serviceWorker.register("./sw.js").catch(() => {});
   });
 }
+
+// ---- Controllo periodico di nuove versioni pubblicate --------------------
+// Il service worker sopra è "network-first" per index.html (vedi sw.js),
+// ma quello aggiorna solo cosa verrà caricato al PROSSIMO reload — una
+// scheda già aperta continua a eseguire il JavaScript già in memoria,
+// anche a lungo, finché non la ricarichi. Con 4 giocatori sincronizzati
+// via Firebase, se pubblico una build a metà partita (es. una regola
+// cambiata) chi ha la scheda aperta da prima resta indietro senza
+// accorgersene — sembra un bug ("a me non me lo fa fare") invece che una
+// versione vecchia. Ogni tot minuti si richiede la index.html vera e
+// propria bypassando la cache, e se il suo APP_VERSION è diverso da
+// quello in esecuzione qui si mostra un banner discreto — mai un reload
+// forzato, per non interrompere una mossa a metà.
+const VERSION_CHECK_INTERVAL_MS = 5 * 60 * 1000; // ogni 5 minuti
+let versionCheckDismissed = false;
+
+function checkForNewVersion() {
+  if (versionCheckDismissed || document.getElementById("version-banner")) return;
+  fetch("./index.html?v=" + Date.now(), { cache: "no-store" })
+    .then((res) => (res.ok ? res.text() : null))
+    .then((html) => {
+      if (!html) return;
+      const m = html.match(/const APP_VERSION\s*=\s*"([^"]+)"/);
+      if (m && m[1] && m[1] !== APP_VERSION) showNewVersionBanner(m[1]);
+    })
+    .catch(() => {}); // offline o rete debole: nessun avviso, si ricontrolla al giro successivo
+}
+
+function showNewVersionBanner(newVersion) {
+  if (document.getElementById("version-banner")) return;
+  const bar = el(
+    "div",
+    { id: "version-banner", class: "version-banner" },
+    el("div", { class: "version-banner-text" }, `È disponibile una nuova versione (${newVersion}). Ricaricala quando fa comodo.`),
+    el("button", { class: "version-banner-btn", onclick: () => location.reload() }, "Ricarica"),
+    el(
+      "button",
+      { class: "version-banner-dismiss", "aria-label": "Ignora", onclick: () => { versionCheckDismissed = true; bar.remove(); } },
+      "✕"
+    )
+  );
+  document.body.appendChild(bar);
+}
+
+setInterval(checkForNewVersion, VERSION_CHECK_INTERVAL_MS);
 </script>
 </body>
 </html>
