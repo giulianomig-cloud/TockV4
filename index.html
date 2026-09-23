@@ -665,6 +665,33 @@ button.danger:active {
 }
 .icon-btn:hover { background: #F3EBD8; border-color: var(--gold); }
 .icon-btn-muted { background: #F3EBD8; border-color: #C99A3A; }
+/* Coppia di frecce "mossa precedente/successiva" per rivedere più di una
+   mossa indietro (vedi stepReplay) — un'unica capsula invece di due cerchi
+   separati, così occupa meno posto nella barra in alto già affollata di
+   icone, pur restando due bottoni distinti e ben separati al tocco. */
+.icon-btn-pair {
+  height: 34px;
+  border-radius: 17px;
+  background: #FFFFFF;
+  border: 1px solid var(--panel-border);
+  display: flex;
+  align-items: stretch;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+.icon-btn-half {
+  width: 30px;
+  border: none;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  transition: background .12s ease;
+}
+.icon-btn-half:hover { background: #F3EBD8; }
+.icon-btn-half:first-child { border-right: 1px solid var(--panel-border); }
 .sound-test-btn {
   display: inline-flex;
   align-items: center;
@@ -791,6 +818,13 @@ button.danger:active {
   padding: 10px 12px;
   font-size: 0.8rem;
   border: 1.5px solid var(--panel-border);
+  /* Senza questo, un riquadro con più contenuto degli altri tre (es. il
+     badge offline) non si adattava alla colonna 1fr della griglia sotto,
+     ma la allargava lui — mandando la riga fuori schermo (segnalato). Coi
+     figli già pronti a restringersi (status-name con ellissi, badge/icone
+     "nowrap" ma piccoli), min-width:0 lascia che sia la griglia a
+     comandare la larghezza, non il contenuto più ingombrante. */
+  min-width: 0;
 }
 /* Il giocatore di turno ha il bordo del SUO colore (come nel mockup
    In-partita.dc.html), non un bordo dorato generico uguale per tutti. */
@@ -927,12 +961,12 @@ button.danger:active {
   overflow-y: auto;
   box-shadow: 0 -14px 32px rgba(36,28,21,0.28);
   animation: pickerSlideUp 0.22s ease-out;
-  /* Trascinando la maniglia (vedi setupPickerPeekDrag) il pannello scorre
-     verso il basso per "sbirciare" il tabellone sotto, senza perdere le
-     scelte già fatte — a differenza di "Annulla"/tap sullo sfondo, che
-     chiudono il picker per davvero. Durante il trascinamento la transizione
-     è disattivata via JS (deve seguire il dito 1:1); qui serve solo per lo
-     scatto morbido all'apertura/rilascio. */
+  /* Trascinando la maniglia (vedi setupPickerDragToClose) il pannello
+     segue il dito verso il basso e, oltre una certa soglia, chiude per
+     davvero — come "Annulla"/tap sullo sfondo. Durante il trascinamento la
+     transizione è disattivata via JS (deve seguire il dito 1:1); qui serve
+     solo per lo scatto morbido all'apertura/rilascio e per tornare su
+     quando il trascinamento non basta a chiudere. */
   transition: transform 0.25s cubic-bezier(0.2, 0.7, 0.3, 1);
 }
 @keyframes pickerSlideUp {
@@ -1196,31 +1230,6 @@ button.secondary.selected {
   text-decoration: underline;
 }
 
-.chat-box {
-  background: #FFFFFF;
-  border: 1.5px solid var(--panel-border);
-  border-radius: 16px;
-  padding: 14px;
-  margin-bottom: 10px;
-}
-.chat-title {
-  font-weight: 800;
-  margin-bottom: 10px;
-  font-size: 0.9rem;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  cursor: pointer;
-  user-select: none;
-}
-.chat-unread {
-  background: var(--red);
-  color: white;
-  border-radius: 999px;
-  font-size: 0.72rem;
-  padding: 1px 7px;
-  font-weight: 700;
-}
 .chat-messages {
   display: flex;
   flex-direction: column;
@@ -1228,6 +1237,31 @@ button.secondary.selected {
   max-height: 160px;
   overflow-y: auto;
   margin-bottom: 10px;
+}
+/* Dentro il foglio a comparsa la chat è l'unico contenuto (non più una
+   sezione tra tante altre nella pagina), quindi può usare più spazio in
+   verticale invece dei 160px pensati per stare compressa in linea. */
+.picker-overlay .chat-messages { max-height: 48vh; }
+
+/* Bottone rotondo che apre la chat — vedi #chat-wrap in renderGameShell
+   per il perché sta qui (subito sotto le pedine) invece che in fondo alla
+   pagina o incollato allo schermo. */
+.chat-fab-row { display: flex; justify-content: flex-end; margin: 2px 0 12px; }
+.chat-fab {
+  position: relative;
+  width: 44px; height: 44px; border-radius: 50%;
+  background: var(--gold); border: none; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 8px 18px -6px rgba(201,154,58,0.55);
+  padding: 0; flex-shrink: 0;
+}
+.chat-fab:hover { background: var(--gold-hover); }
+.chat-fab-badge {
+  position: absolute; top: -4px; right: -4px;
+  background: var(--red); color: #fff; font-size: 0.62rem; font-weight: 800;
+  border-radius: 999px; min-width: 18px; height: 18px; padding: 0 4px;
+  display: flex; align-items: center; justify-content: center;
+  border: 2px solid var(--cream);
 }
 .chat-row { display: flex; align-items: flex-end; gap: 8px; }
 .chat-row.own { justify-content: flex-end; }
@@ -3665,6 +3699,7 @@ function buildBoardSVG(containerEl, board) {
   containerEl.innerHTML = "";
   containerEl.appendChild(svg);
   resetPawnAnimState();
+  resetMoveReplayHistory();
   return svg;
 }
 
@@ -4432,7 +4467,7 @@ function renderPawns(svg, board, pawns, lastSwap, lastCapture, lastHomeEntry) {
 // Bumped by hand each time a new build is produced — shown in the lobby so
 // it's obvious at a glance whether you're on the latest version, instead
 // of guessing from a stale browser tab or cache.
-const APP_VERSION = "v4.25";
+const APP_VERSION = "v4.28";
 
 let myColor = null;
 let myRoomId = null;
@@ -6087,12 +6122,18 @@ function renderGameShell() {
             ])
           ),
           el(
-            "button",
-            { class: "icon-btn", "aria-label": "Rivedi ultima mossa", onclick: replayLastMove },
-            svgIcon(14, 14, "0 0 24 24", "#5A5145", 2.2, [
-              ["polyline", { points: "1 4 1 10 7 10" }],
-              ["path", { d: "M3.51 15a9 9 0 1 0 .49-9.36L1 10" }],
-            ])
+            "div",
+            { class: "icon-btn-pair" },
+            el(
+              "button",
+              { class: "icon-btn-half", "aria-label": "Mossa precedente", onclick: () => stepReplay(-1) },
+              svgIcon(13, 13, "0 0 24 24", "#5A5145", 2.4, [["polyline", { points: "15 18 9 12 15 6" }]])
+            ),
+            el(
+              "button",
+              { class: "icon-btn-half", "aria-label": "Mossa successiva", onclick: () => stepReplay(1) },
+              svgIcon(13, 13, "0 0 24 24", "#5A5145", 2.4, [["polyline", { points: "9 18 15 12 9 6" }]])
+            )
           ),
           el(
             "button",
@@ -6120,8 +6161,15 @@ function renderGameShell() {
       el("div", { id: "turn-indicator" }),
       el("div", { id: "hand-wrap", class: "hand-row" }),
       el("div", { id: "status-wrap" }),
-      el("div", { id: "picker-wrap" }),
+      // Il bottone della chat vive qui — subito sotto i campi con le
+      // pedine — non più come riga da aprire più giù nella pagina
+      // (segnalato: "la chat è un po' sotto e non è visibile a colpo
+      // d'occhio"). Non è "flottante" in senso stretto (non è position:
+      // fixed, quindi non resta incollato allo schermo scorrendo): è stato
+      // scelto apposta così, per non rischiare di finire sopra le carte in
+      // mano più in basso, che sono la zona più delicata da toccare.
       el("div", { id: "chat-wrap" }),
+      el("div", { id: "picker-wrap" }),
       el("div", { id: "log-wrap", class: "log-box" }),
     )
   );
@@ -6404,7 +6452,7 @@ function maybePlaySounds(state) {
   } else if (chatCount > soundTracker.chatCount) {
     const last = state.chat[chatCount - 1];
     soundTracker.chatCount = chatCount;
-    if (chatCollapsed && last && last.color !== myColor) playSound("chatMessage");
+    if (!chatPickerOpen && last && last.color !== myColor) playSound("chatMessage");
   }
 }
 
@@ -7302,6 +7350,7 @@ function onStateChange(state) {
   maybeAdvanceBotTurn(state);
   maybeAdvanceBotChat(state);
   maybePlaySounds(state);
+  recordMoveHistoryIfFresh(state);
   renderDealerDrawScreen(state);
   renderStartControls(state);
   renderExchangeControls(state);
@@ -7603,8 +7652,12 @@ function renderPlayerStatus(state) {
         // Nessun indicatore quando tutto è normale (online, o un bot che
         // per definizione "c'è" sempre) — solo un'icona quando un
         // giocatore umano risulta davvero disconnesso.
+        // Solo l'icona (senza la scritta "offline"): il testo allargava il
+        // riquadro rispetto agli altri tre nella stessa griglia, mandando
+        // la riga fuori schermo — segnalato. Il motivo resta comunque
+        // leggibile al tocco/hover tramite il title.
         !isBotSeat && state.players[c] && !isOnline
-          ? el("span", { class: "status-offline-warning", title: `${colorLabel(c)} non è connesso in questo momento` }, "⚠️ offline")
+          ? el("span", { class: "status-offline-warning", title: `${colorLabel(c)} non è connesso in questo momento` }, "⚠️")
           : "",
         isDealer ? dealerIcon() : "",
         miniPawnsRow(state.pawns[c], c)
@@ -7972,20 +8025,7 @@ function ensurePickerBackdrop() {
     bd = document.createElement("div");
     bd.id = "picker-backdrop";
     bd.className = "picker-backdrop";
-    // Se il pannello è "sbirciato" (trascinato in basso per vedere il
-    // tabellone, vedi setupPickerPeekDrag), un tocco sullo sfondo lo
-    // riporta semplicemente su — non lo chiude per davvero, altrimenti si
-    // perderebbero le scelte già fatte solo per aver dato un'occhiata al
-    // tabellone. Chiude/annulla solo quando il pannello è già a tutta
-    // altezza, come prima.
-    bd.onclick = () => {
-      const wrap = document.getElementById("picker-wrap");
-      if (wrap && wrap.classList.contains("picker-peeked")) {
-        setPickerPeeked(false);
-      } else {
-        closePicker();
-      }
-    };
+    bd.onclick = closePicker;
     document.body.appendChild(bd);
   }
   return bd;
@@ -8027,16 +8067,11 @@ function unlockBodyScroll() {
   window.scrollTo(0, y);
 }
 
-// Quanto resta visibile del pannello (giusto la maniglia, per poterlo
-// riafferrare) quando viene trascinato in basso per "sbirciare" il
-// tabellone sotto — vedi setupPickerPeekDrag/setPickerPeeked.
-const PICKER_PEEK_VISIBLE_PX = 54;
-
 function openPicker(contentEl) {
   const wrap = $("#picker-wrap");
   wrap.innerHTML = "";
   wrap.className = "picker-overlay";
-  wrap.style.transform = ""; // azzera un'eventuale "sbirciata" rimasta da un picker precedente
+  wrap.style.transform = ""; // azzera un eventuale trascinamento rimasto da un picker precedente
   const handleZone = el("div", { class: "picker-handle-zone" }, el("div", { class: "picker-handle" }));
   wrap.appendChild(handleZone);
   wrap.appendChild(contentEl);
@@ -8044,7 +8079,7 @@ function openPicker(contentEl) {
   bd.classList.add("show");
   bd.style.opacity = "";
   lockBodyScroll();
-  setupPickerPeekDrag(wrap, handleZone);
+  setupPickerDragToClose(wrap, handleZone);
 }
 function closePicker() {
   const wrap = $("#picker-wrap");
@@ -8057,41 +8092,36 @@ function closePicker() {
     bd.style.opacity = "";
   }
   unlockBodyScroll();
+  // Se era la chat ad essere aperta, torna a contare i messaggi non letti
+  // da qui in avanti (no-op innocuo se non era la chat).
+  if (chatPickerOpen) {
+    chatPickerOpen = false;
+    _chatFabRenderKey = null;
+    if (currentState) renderChatFab(currentState.chat || []);
+  }
 }
 
-// Mette (o toglie) il pannello in modalità "sbirciata": scorre quasi del
-// tutto fuori dallo schermo, lasciando visibile solo la maniglia, per dare
-// un'occhiata al tabellone sotto senza chiudere il picker e senza perdere
-// le scelte già fatte (es. un'allocazione del 7 a metà). Lo sfondo scurito
-// si schiarisce di conseguenza, così il tabellone si vede davvero.
-function setPickerPeeked(peeked) {
-  const wrap = document.getElementById("picker-wrap");
-  const bd = document.getElementById("picker-backdrop");
-  if (!wrap || !wrap.classList.contains("picker-overlay")) return;
-  const sheetHeight = wrap.getBoundingClientRect().height;
-  const maxTranslate = Math.max(0, sheetHeight - PICKER_PEEK_VISIBLE_PX);
-  wrap.classList.toggle("picker-peeked", peeked);
-  wrap.style.transform = peeked ? `translateY(${maxTranslate}px)` : "";
-  if (bd) bd.style.opacity = peeked ? "0.12" : "";
-}
-
-// Gesto di trascinamento sulla maniglia del picker: segue il dito 1:1
-// mentre si trascina (transizione disattivata), e al rilascio scatta o
-// nella posizione "sbirciata" (tabellone visibile) o torna su, a seconda
-// di quanto si era trascinato — un semplice tocco sulla maniglia (senza
-// trascinare) alterna semplicemente le due posizioni.
-function setupPickerPeekDrag(wrap, handleZone) {
+// Gesto di trascinamento sulla maniglia del picker: segue il dito 1:1 verso
+// il basso (transizione disattivata durante il trascinamento), e al
+// rilascio o richiude il pannello (se trascinato oltre una certa soglia, o
+// con un colpo secco anche se breve) o torna su di scatto. In precedenza
+// trascinare "sbirciava" solo il tabellone sotto (senza chiudere davvero) —
+// segnalato come un pannello che "si incastra": qui invece un trascinamento
+// verso il basso chiude per davvero, come un normale foglio a comparsa.
+// Solo la MANIGLIA ha questi listener (non tutto il pannello), quindi lo
+// scroll del contenuto sotto — es. il regolamento, spesso più lungo di un
+// avviso — resta lo scroll nativo del browser, non tocca questo gesto.
+function setupPickerDragToClose(wrap, handleZone) {
   let dragging = false;
   let startY = 0;
-  let startTranslate = 0;
-  let maxTranslate = 0;
+  let startTime = 0;
+  let sheetHeight = 0;
 
   const onDown = (evt) => {
     dragging = true;
     startY = evt.clientY;
-    const sheetHeight = wrap.getBoundingClientRect().height;
-    maxTranslate = Math.max(0, sheetHeight - PICKER_PEEK_VISIBLE_PX);
-    startTranslate = wrap.classList.contains("picker-peeked") ? maxTranslate : 0;
+    startTime = Date.now();
+    sheetHeight = wrap.getBoundingClientRect().height || 1;
     wrap.style.transition = "none";
     if (handleZone.setPointerCapture) {
       try { handleZone.setPointerCapture(evt.pointerId); } catch (e) {}
@@ -8099,25 +8129,28 @@ function setupPickerPeekDrag(wrap, handleZone) {
   };
   const onMove = (evt) => {
     if (!dragging) return;
-    const next = Math.min(maxTranslate, Math.max(0, startTranslate + (evt.clientY - startY)));
+    const next = Math.max(0, evt.clientY - startY); // solo verso il basso
     wrap.style.transform = `translateY(${next}px)`;
     const bd = document.getElementById("picker-backdrop");
-    if (bd && maxTranslate > 0) bd.style.opacity = String(1 - (next / maxTranslate) * 0.88);
+    if (bd) bd.style.opacity = String(Math.max(0, 1 - (next / sheetHeight) * 1.15));
     evt.preventDefault();
   };
   const onUp = (evt) => {
     if (!dragging) return;
     dragging = false;
     wrap.style.transition = "";
-    const delta = evt.clientY - startY;
-    const wasPeeked = startTranslate > 0;
-    // Un tocco senza vero trascinamento alterna semplicemente le due
-    // posizioni, invece di ricadere nel calcolo-soglia sotto (che con
-    // delta≈0 partendo da "sbirciato" lascerebbe erroneamente il pannello
-    // giù anche per un tap distratto).
-    const isTap = Math.abs(delta) < 6;
-    const shouldPeek = isTap ? !wasPeeked : Math.min(maxTranslate, Math.max(0, startTranslate + delta)) > maxTranslate * 0.3;
-    setPickerPeeked(shouldPeek);
+    const delta = Math.max(0, evt.clientY - startY);
+    const elapsedMs = Math.max(1, Date.now() - startTime);
+    const speed = delta / elapsedMs; // px/ms — un colpo secco chiude anche se breve
+    const pastThreshold = delta > Math.min(140, sheetHeight * 0.28);
+    if (pastThreshold || speed > 0.6) {
+      closePicker();
+      return;
+    }
+    // Non abbastanza: torna su di scatto invece di restare a metà.
+    wrap.style.transform = "";
+    const bd = document.getElementById("picker-backdrop");
+    if (bd) bd.style.opacity = "";
   };
 
   handleZone.addEventListener("pointerdown", onDown);
@@ -8246,46 +8279,112 @@ const RULES_SECTIONS = [
   },
 ];
 
-// ---- Rivedi ultima mossa -------------------------------------------------
-// Su richiesta esplicita, evidenzia di nuovo l'ultima cosa successa sul
-// tabellone — utile se te la sei persa la prima volta (era già finita
-// quando hai guardato lo schermo). Sceglie il PIÙ RECENTE tra i quattro
-// possibili eventi tracciati (mossa semplice, mangiata, scambio Jack,
-// arrivo in casa) confrontando i rispettivi timestamp, e richiama lo
-// stesso flash che si vede quando l'evento accade dal vivo — qui però
-// scatta a comando, non serve che sia "fresco".
-function replayLastMove() {
+// ---- Rivedi mosse precedenti ----------------------------------------------
+// Cronologia SOLO locale (non scritta su Firebase, non fa parte dello stato
+// di gioco): tiene traccia, lato client, delle mosse viste MENTRE questo
+// client era connesso, così le due frecce in alto possono farne scorrere
+// avanti/indietro più di una — non solo l'ultima. Stesso principio "solo
+// eventi freschi" già usato da _pawnAnimState.primed (vedi renderPawns), per
+// non riempirla con l'intera partita già in corso al primo collegamento/
+// ricollegamento: la cronologia riparte vuota ogni volta che ti ricolleghi.
+const MOVE_HISTORY_MAX = 20;
+let moveReplayHistory = [];
+let moveReplayIndex = -1; // -1 = nessuna mossa selezionata (vista "live")
+const _historyTrack = { ids: { seven: 0, move: 0, capture: 0, swap: 0, homeEntry: 0 }, primed: false };
+
+// Richiamata da buildBoardSVG (quindi a ogni renderGameShell, cioè a ogni
+// ingresso/ricollegamento in una stanza) — stesso momento in cui si azzera
+// _pawnAnimState, per lo stesso motivo: gli id salvati in _historyTrack
+// riguardano un tabellone che non esiste più, e ripartire da una
+// cronologia vuota evita sia falsi "eventi freschi" sia mosse cliccabili
+// che punterebbero a pedine ormai in un'altra configurazione.
+function resetMoveReplayHistory() {
+  moveReplayHistory = [];
+  moveReplayIndex = -1;
+  _historyTrack.ids = { seven: 0, move: 0, capture: 0, swap: 0, homeEntry: 0 };
+  _historyTrack.primed = false;
+}
+
+// Stessa precedenza già usata qui: se più eventi scattano nello stesso giro
+// (es. un 7 che include anche una mangiata), se ne sceglie uno solo a
+// rappresentare l'intera giocata — seven > move > capture > swap >
+// homeEntry a parità di istante (sort stabile).
+function recordMoveHistoryIfFresh(state) {
+  const t = _historyTrack;
+  const events = [
+    { key: "seven", data: state.lastSeven },
+    { key: "move", data: state.lastMove },
+    { key: "capture", data: state.lastCapture },
+    { key: "swap", data: state.lastSwap },
+    { key: "homeEntry", data: state.lastHomeEntry },
+  ];
+  const fresh = [];
+  events.forEach(({ key, data }) => {
+    if (data && data.id && data.id !== t.ids[key]) {
+      t.ids[key] = data.id;
+      if (t.primed) fresh.push({ key, data });
+    }
+  });
+  t.primed = true;
+  if (fresh.length === 0) return;
+  fresh.sort((a, b) => (b.data.ts || 0) - (a.data.ts || 0));
+  const entry = buildHistoryEntry(fresh[0].key, fresh[0].data);
+  if (!entry) return;
+  moveReplayHistory.push(entry);
+  if (moveReplayHistory.length > MOVE_HISTORY_MAX) moveReplayHistory.shift();
+  // Una mossa vera e propria appena arrivata "chiude" una revisione in
+  // corso: si torna alla vista live, altrimenti l'indice selezionato
+  // resterebbe puntato a una mossa vecchia mentre la partita va avanti.
+  moveReplayIndex = -1;
+}
+
+function buildHistoryEntry(key, data) {
+  if (key === "seven") {
+    return { label: `${cn(data.color)} gioca il 7`, run: () => flashSevenReplay(boardSvg, BOARD, data.color, data.portions) };
+  }
+  if (key === "swap") {
+    return { label: `${cn(data.a.color)} e ${cn(data.b.color)} si scambiano (Jack)`, run: () => flashJackSwapReplay(boardSvg, BOARD, data) };
+  }
+  if (key === "capture") {
+    const label = data.by ? `${cn(data.by)} mangia ${cn(data.color)}` : `${cn(data.color)} viene mangiato`;
+    return { label, run: () => flashCapture(boardSvg, BOARD, data.color, data.atPos) };
+  }
+  if (key === "homeEntry") {
+    return { label: `${cn(data.color)} entra in casa`, run: () => flashHomeEntry(boardSvg, BOARD, data.color, data.pos - 1000) };
+  }
+  return { label: `${cn(data.color)} muove`, run: () => flashMoveReplay(boardSvg, BOARD, data.color, data.from, data.pos) };
+}
+
+// Chiamata dalle due frecce in alto: dir -1 = mossa precedente (più
+// indietro nel tempo), dir +1 = mossa successiva (più recente). Al primo
+// tocco (nessuna mossa ancora selezionata) qualunque freccia parte dalla
+// più recente — stesso comportamento di prima del singolo "rivedi ultima
+// mossa".
+function stepReplay(dir) {
   if (!currentState || !boardSvg) return;
-  // lastSeven per primo: se il 7 ha appena toccato più pedine, i suoi
-  // eventi "figli" (lastCapture/lastHomeEntry di una singola porzione)
-  // hanno quasi lo stesso istante — lastSeven viene comunque registrato
-  // per ultimo (a fine giocata) quindi il suo ts è il più recente o al
-  // peggio in parità, e in caso di parità va scelto lui (rappresenta
-  // l'intera giocata, non solo un suo pezzo).
-  const candidates = [
-    currentState.lastSeven,
-    currentState.lastMove,
-    currentState.lastCapture,
-    currentState.lastSwap,
-    currentState.lastHomeEntry,
-  ].filter((e) => e && e.ts);
-  if (candidates.length === 0) {
+  if (moveReplayHistory.length === 0) {
     showToast("Non c'è ancora nessuna mossa da rivedere in questa partita.");
     return;
   }
-  candidates.sort((a, b) => b.ts - a.ts);
-  const latest = candidates[0];
-  if (latest === currentState.lastSeven) {
-    flashSevenReplay(boardSvg, BOARD, latest.color, latest.portions);
-  } else if (latest === currentState.lastSwap) {
-    flashJackSwapReplay(boardSvg, BOARD, latest);
-  } else if (latest === currentState.lastCapture) {
-    flashCapture(boardSvg, BOARD, latest.color, latest.atPos);
-  } else if (latest === currentState.lastHomeEntry) {
-    flashHomeEntry(boardSvg, BOARD, latest.color, latest.pos - 1000);
+  if (moveReplayIndex === -1) {
+    moveReplayIndex = moveReplayHistory.length - 1;
   } else {
-    flashMoveReplay(boardSvg, BOARD, latest.color, latest.from, latest.pos);
+    const next = moveReplayIndex + dir;
+    if (next < 0) {
+      showToast("Non ci sono altre mosse più indietro.");
+      return;
+    }
+    if (next > moveReplayHistory.length - 1) {
+      showToast("Sei già alla mossa più recente.");
+      return;
+    }
+    moveReplayIndex = next;
   }
+  const entry = moveReplayHistory[moveReplayIndex];
+  entry.run();
+  const fromEnd = moveReplayHistory.length - moveReplayIndex;
+  const arrow = dir < 0 ? "◀" : "▶";
+  showToast(`${arrow} ${fromEnd}/${moveReplayHistory.length} — ${entry.label}`);
 }
 
 // Badge colorato davanti a ogni sezione, come nel mockup Regole.dc.html
@@ -8669,41 +8768,61 @@ async function confirmSeven(active, card) {
 
 // ---------------- Chat ----------------
 
-let chatRenderedCount = -1; // avoid re-rendering (and losing input focus) needlessly
-// Chiusa di default quando si entra in partita — prima appariva sempre
-// aperta, occupando spazio subito anche a chi non la usa. Restano
-// comunque apribili su richiesta con l'intestazione cliccabile (vedi
-// toggleChatCollapsed) — e il badge dei messaggi non letti sotto avvisa
-// comunque quando arriva qualcosa di nuovo.
-let chatCollapsed = true;
-let chatSeenCount = 0; // messages the user has actually looked at (chat open)
+// La chat non è più una riga da aprire in linea nella pagina (segnalato:
+// "è un po' sotto e non è visibile a colpo d'occhio") — ora è un bottone
+// rotondo sempre a portata subito sotto i campi delle pedine (vedi il
+// commento su #chat-wrap in renderGameShell), che apre la chat vera e
+// propria nello stesso foglio a comparsa (openPicker) già usato per Jack/7/
+// regole/estrazione mazziere — coerente col resto dell'app.
+let chatPickerOpen = false;
+let chatSeenCount = 0; // messaggi già visti (badge = solo quelli arrivati dopo)
+let _chatFabRenderKey = null; // evita di ridisegnare il bottone ad ogni giro se non serve
 
 function renderChat(state) {
-  const wrap = $("#chat-wrap");
   const messages = state.chat || [];
-  if (chatRenderedCount === messages.length && wrap.dataset.collapsed === String(chatCollapsed)) return;
-  chatRenderedCount = messages.length;
-  wrap.innerHTML = "";
-  wrap.dataset.collapsed = String(chatCollapsed);
-  if (!chatCollapsed) chatSeenCount = messages.length;
-  const unread = chatCollapsed ? Math.max(0, messages.length - chatSeenCount) : 0;
+  if (chatPickerOpen) {
+    // Il foglio è già aperto: aggiorna la lista messaggi al volo (non un
+    // openPicker da capo, che perderebbe lo scroll e ripartirebbe con
+    // l'animazione d'entrata) — e considera tutto già "visto".
+    updateChatPickerMessages(messages);
+    chatSeenCount = messages.length;
+  }
+  renderChatFab(messages);
+}
 
-  const title = el(
-    "div",
-    { class: "chat-title", onclick: toggleChat },
-    el("span", {}, "💬 Chat"),
+function renderChatFab(messages) {
+  const wrap = $("#chat-wrap");
+  const unread = chatPickerOpen ? 0 : Math.max(0, messages.length - chatSeenCount);
+  const key = messages.length + ":" + chatPickerOpen;
+  if (_chatFabRenderKey === key) return;
+  _chatFabRenderKey = key;
+  wrap.innerHTML = "";
+  wrap.appendChild(
     el(
-      "span",
-      {},
-      unread > 0 ? el("span", { class: "chat-unread" }, String(unread)) : "",
-      el("span", { style: "margin-left:6px;" }, chatCollapsed ? "▸" : "▾")
+      "div",
+      { class: "chat-fab-row" },
+      el(
+        "button",
+        { class: "chat-fab", "aria-label": "Apri la chat", onclick: openChatPicker },
+        chatBubbleIconSvg(),
+        unread > 0 ? el("span", { class: "chat-fab-badge" }, unread > 99 ? "99+" : String(unread)) : ""
+      )
     )
   );
+}
 
-  if (chatCollapsed) {
-    wrap.appendChild(el("div", { class: "chat-box" }, title));
-    return;
-  }
+function chatBubbleIconSvg() {
+  return svgIcon(19, 19, "0 0 24 24", "#FFFFFF", 2.1, [
+    ["path", { d: "M21 11.5a8.38 8.38 0 0 1-4.8 7.6 8.5 8.5 0 0 1-9.4-1.2L3 19l1.1-3.8A8.38 8.38 0 0 1 3 11.5a8.5 8.5 0 0 1 8.5-8.5h.5a8.48 8.48 0 0 1 8 8v.5z" }],
+  ]);
+}
+
+function openChatPicker() {
+  if (!currentState) return;
+  chatPickerOpen = true;
+  const messages = currentState.chat || [];
+  chatSeenCount = messages.length;
+  _chatFabRenderKey = null; // forza il ridisegno del badge (torna a 0) alla prossima renderChat
 
   const list = el("div", { id: "chat-messages", class: "chat-messages" });
   messages.forEach((m) => list.appendChild(chatLine(m)));
@@ -8713,11 +8832,11 @@ function renderChat(state) {
     if (e.key === "Enter") sendChat();
   });
 
-  wrap.appendChild(
+  openPicker(
     el(
       "div",
-      { class: "chat-box" },
-      title,
+      { class: "choice-box" },
+      el("p", { style: "font-weight:800;font-size:1.05rem;margin:0 0 10px;" }, "💬 Chat di stanza"),
       list,
       el(
         "div",
@@ -8750,12 +8869,25 @@ function renderChat(state) {
     )
   );
   list.scrollTop = list.scrollHeight;
+  renderChatFab(messages); // azzera subito il badge, non aspettare il prossimo onStateChange
 }
 
-function toggleChat() {
-  chatCollapsed = !chatCollapsed;
-  chatRenderedCount = -1; // force a re-render
-  if (currentState) renderChat(currentState);
+// Aggiorna la lista messaggi DENTRO il foglio già aperto (se è ancora
+// davvero quello della chat — un altro picker potrebbe averlo sostituito
+// nel frattempo, es. un'estrazione mazziere che scatta da sola: in quel
+// caso #chat-messages non esiste più e si torna semplicemente a contare i
+// non letti come se il foglio fosse chiuso).
+function updateChatPickerMessages(messages) {
+  const list = document.getElementById("chat-messages");
+  if (!list) {
+    chatPickerOpen = false;
+    return;
+  }
+  if (list.children.length === messages.length) return;
+  for (let i = list.children.length; i < messages.length; i++) {
+    list.appendChild(chatLine(messages[i]));
+  }
+  list.scrollTop = list.scrollHeight;
 }
 
 function chatLine(m) {
