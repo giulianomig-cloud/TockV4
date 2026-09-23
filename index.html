@@ -2084,7 +2084,7 @@ function newGameState(playersByColor, roomMode) {
     // "Estrazione squadre" più sotto.
     roomMode: roomMode || "manual",
     draft: roomMode === "draw"
-      ? { players: {}, order: [], pairDraw: null, pairChoice: null, colorPicks: {} }
+      ? { players: {}, order: [], pairDraw: null, pairChoice: null, colorPicks: {}, botTokens: {} }
       : null,
     dealerColor: "red",
     turnColor: null,
@@ -2131,6 +2131,10 @@ function normalizeState(state) {
     if (!state.draft.players) state.draft.players = {};
     if (!Array.isArray(state.draft.order)) state.draft.order = [];
     if (!state.draft.colorPicks) state.draft.colorPicks = {};
+    // token -> "easy"/"hard" per i posti dell'estrazione affidati al
+    // computer (vedi assignBotToDraft) — assente nelle stanze create prima
+    // di questa funzionalità, quindi trattato come "nessun bot".
+    if (!state.draft.botTokens) state.draft.botTokens = {};
   }
   for (const c of COLORS) {
     if (!Array.isArray(state.hands[c])) state.hands[c] = [];
@@ -2140,10 +2144,15 @@ function normalizeState(state) {
 }
 
 // Chat messages are capped so the stored state doesn't grow forever.
+// `id` incrementale (stesso schema di recordCapture/lastSwap) — serve a
+// botChatKeywordReply per ritrovare con certezza il messaggio giusto anche
+// se altri messaggi arrivano nel frattempo, invece di fidarsi di un indice
+// che può spostarsi.
 function postChatMessage(state, color, text) {
   const clean = String(text || "").trim().slice(0, 200);
   if (!clean) return;
-  state.chat.push({ color, text: clean, ts: Date.now() });
+  const lastId = state.chat.length ? state.chat[state.chat.length - 1].id || 0 : 0;
+  state.chat.push({ id: lastId + 1, color, text: clean, ts: Date.now() });
   if (state.chat.length > 100) state.chat = state.chat.slice(-100);
 }
 
@@ -4412,7 +4421,7 @@ function renderPawns(svg, board, pawns, lastSwap, lastCapture, lastHomeEntry) {
 // Bumped by hand each time a new build is produced — shown in the lobby so
 // it's obvious at a glance whether you're on the latest version, instead
 // of guessing from a stale browser tab or cache.
-const APP_VERSION = "v4.14";
+const APP_VERSION = "v4.15";
 
 let myColor = null;
 let myRoomId = null;
@@ -4954,7 +4963,7 @@ function renderLobbyColorSection(roomId, existingPlayers) {
     if (occupant) {
       inner = [
         el("span", { class: "color-card-dot" }),
-        el("div", { class: "color-card-name" }, occupant.isBot ? "Computer" : occupant.name || colorLabel(c)),
+        el("div", { class: "color-card-name" }, (occupant.isBot ? "🤖 " : "") + (occupant.name || colorLabel(c))),
         el("div", { class: "color-card-sub" }, colorLabel(c)),
       ];
     } else if (mine) {
@@ -5093,10 +5102,9 @@ function swatchDot(color) {
 function playerName(state, c) {
   const p = state && state.players && state.players[c];
   const n = p && p.name;
-  // Il nome del bot è già "Bot <Colore>" (assegnato in assignBotToColor),
-  // quindi distingue da solo un bot dall'altro senza bisogno di appendere
-  // un'emoji uguale per tutti e quattro — prima "Computer 🤖" ripetuto
-  // identico per ogni colore si leggeva solo dal pallino colorato davanti.
+  // Un bot ha già un nome vero (es. "Guglielmo", vedi pickBotName) invece
+  // di un generico "Bot <Colore>", quindi si distingue da solo un bot
+  // dall'altro qui senza bisogno di appendere altro.
   return n && n.trim() ? n.trim() : colorLabel(c);
 }
 
@@ -5207,6 +5215,30 @@ async function joinManualRoom(roomId) {
   renderGameShell();
 }
 
+// Nomi assegnati ai bot invece di un generico "Bot Verde"/"Computer" — più
+// simpatico e, quando ce n'è più di uno in stanza, li distingue subito uno
+// dall'altro a colpo d'occhio in chat/registro/lobby (playerName() li usa
+// così come sono, senza bisogno di codice speciale altrove).
+const BOT_NAMES = [
+  "Guglielmo", "Beatrice", "Leonardo", "Chiara", "Filippo", "Sofia",
+  "Tommaso", "Martina", "Riccardo", "Elena", "Davide", "Alessia",
+  "Lorenzo", "Giulia", "Edoardo", "Caterina", "Matteo", "Camilla",
+  "Federico", "Aurora",
+];
+// Sceglie un nome libero (non già usato da chi è in stanza) così due bot
+// non finiscono mai con lo stesso nome; se per assurdo sono finiti tutti
+// occupati (più di 20 tra bot e persone) aggiunge un numero in coda invece
+// di bloccarsi.
+function pickBotName(usedNames) {
+  const used = new Set((usedNames || []).filter(Boolean).map((n) => n.trim().toLowerCase()));
+  const free = BOT_NAMES.filter((n) => !used.has(n.toLowerCase()));
+  if (free.length > 0) return free[Math.floor(Math.random() * free.length)];
+  const base = BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)];
+  let n = 2;
+  while (used.has((base + " " + n).toLowerCase())) n++;
+  return base + " " + n;
+}
+
 // Affida un posto libero al computer, invece che a una persona — utile per
 // provare o giocare anche quando non siete in 4. Se la stanza non esiste
 // ancora (nessuno l'ha creata cliccando "Entra nella stanza"), il computer
@@ -5226,13 +5258,14 @@ async function assignBotToColor(roomId, color, onDone, botLevel) {
     const snap = await ref.get();
     if (!snap.exists()) {
       const players = {};
-      players[color] = { name: "Bot " + colorLabel(color), token: "BOT-" + color, isBot: true, botLevel: level };
+      players[color] = { name: pickBotName([]), token: "BOT-" + color, isBot: true, botLevel: level };
       const state = newGameState(players, "manual");
       await writeState(roomId, state);
     } else {
       await updateState(roomId, (state) => {
         if (state.players[color]) throw new Error("questo colore è già stato preso");
-        state.players[color] = { name: "Bot " + colorLabel(color), token: "BOT-" + color, isBot: true, botLevel: level };
+        const used = COLORS.map((c) => state.players[c] && state.players[c].name);
+        state.players[color] = { name: pickBotName(used), token: "BOT-" + color, isBot: true, botLevel: level };
       });
     }
   } catch (e) {
@@ -5261,6 +5294,48 @@ async function removeBotFromColor(roomId, color, onDone) {
   if (onDone) { onDone(); return; }
   const snap = await roomRef(roomId).get();
   renderManualLobby(roomId, (snap.val() && snap.val().players) || {});
+}
+
+// Equivalente di assignBotToColor/removeBotFromColor ma per la modalità
+// "estrazione" (roomMode "draw"): qui non si sceglie un colore, quindi il
+// bot entra come un giocatore qualsiasi nel draft (nome + token) e rientra
+// nel sorteggio delle coppie come chiunque altro. Il colore gli viene
+// assegnato più avanti da maybeAdvanceDraft/maybeAdvanceDraftBots, esattamente
+// come per una persona vera — solo che se finisce su una coppia composta da
+// due bot (nessun umano che possa cliccare "scegli il colore" per loro),
+// ci pensa maybeAdvanceDraftBots a farlo al posto suo.
+async function assignBotToDraft(roomId, botLevel) {
+  unlockAudio();
+  const level = botLevel === "easy" ? "easy" : "hard";
+  try {
+    await updateState(roomId, (state) => {
+      if (!state.draft) throw new Error("questa stanza non è in modalità estrazione");
+      if (Object.keys(state.draft.players).length >= 4) throw new Error("la stanza è già piena (4 giocatori)");
+      const token = "bot-" + Math.random().toString(36).slice(2, 8);
+      const name = pickBotName(Object.values(state.draft.players));
+      state.draft.players[token] = name;
+      state.draft.order.push(token);
+      if (!state.draft.botTokens) state.draft.botTokens = {};
+      state.draft.botTokens[token] = level;
+    });
+  } catch (e) {
+    showToast("Non riesco ad aggiungere il computer: " + describeError(e));
+  }
+}
+
+// Toglie un bot dall'estrazione prima che la stanza si riempia (dopo, il
+// sorteggio è già partito e non ha più senso liberare il posto da qui).
+async function removeBotFromDraft(roomId, token) {
+  try {
+    await updateState(roomId, (state) => {
+      if (!state.draft || !state.draft.botTokens || !state.draft.botTokens[token]) return; // non è un bot, non tocca
+      delete state.draft.players[token];
+      delete state.draft.botTokens[token];
+      state.draft.order = state.draft.order.filter((t) => t !== token);
+    });
+  } catch (e) {
+    showToast("Non riesco a togliere il computer: " + describeError(e));
+  }
 }
 
 // A color, once claimed in a room, stays claimed by the same device/browser
@@ -5401,6 +5476,7 @@ function onDraftStateChange(state) {
   }
 
   maybeAdvanceDraft(state);
+  maybeAdvanceDraftBots(state);
   renderDraftScreen(state);
 }
 
@@ -5428,10 +5504,63 @@ function maybeAdvanceDraft(state) {
       if (Object.keys(s.players).length >= 4) return; // già finalizzato
       if (Object.keys(s.draft.colorPicks).length < 4) return;
       for (const [token, color] of Object.entries(s.draft.colorPicks)) {
-        s.players[color] = { name: s.draft.players[token], token };
+        const botLevel = s.draft.botTokens && s.draft.botTokens[token];
+        s.players[color] = botLevel
+          ? { name: s.draft.players[token], token, isBot: true, botLevel }
+          : { name: s.draft.players[token], token };
       }
     }).catch(() => {});
   }
+}
+
+// Se una coppia estratta è composta da DUE bot, nessun client umano
+// cliccherà mai "scegli il colore" per loro (pickColorPair/pickSoloColor
+// sono pensati per una persona che clicca sulla propria squadra) — la
+// scelta della squadra normale, quando almeno uno dei due è umano, resta
+// invariata: il partner umano che clicca assegna automaticamente anche il
+// colore del compagno bot (vedi pickSoloColor). Qui si copre solo il caso
+// in cui NESSUNO dei due può farlo da sé: un bot decide al posto della
+// coppia, dopo una piccola pausa "umana", con lo stesso schema idempotente
+// (transazione Firebase) usato per le mosse dei bot in partita.
+let draftBotTimer = null;
+function scheduleDraftBotAction(fn) {
+  if (draftBotTimer) return;
+  const delay = 900 + Math.random() * 900; // 0,9s – 1,8s
+  draftBotTimer = setTimeout(() => {
+    draftBotTimer = null;
+    fn().catch((e) => console.error("bot estrazione:", e));
+  }, delay);
+}
+
+function maybeAdvanceDraftBots(state) {
+  const d = state.draft;
+  if (!d || !d.pairDraw || !d.pairChoice) return;
+  if (Object.keys(d.colorPicks).length >= 4) return;
+  const botTokens = d.botTokens || {};
+  for (let pairIndex = 0; pairIndex < 2; pairIndex++) {
+    const pair = d.pairDraw.pairs[pairIndex];
+    if (!pair || !pair.every((t) => botTokens[t])) continue; // almeno un umano: ci pensa lui/lei
+    if (pair.some((t) => d.colorPicks[t])) continue; // già assegnato
+    scheduleDraftBotAction(() => botPickPairColors(pairIndex));
+    return;
+  }
+}
+
+async function botPickPairColors(pairIndex) {
+  await updateState(myRoomId, (state) => {
+    const d = state.draft;
+    if (!d || !d.pairDraw || !d.pairChoice) return;
+    const pair = d.pairDraw.pairs[pairIndex];
+    if (!pair) return;
+    if (pair.some((t) => d.colorPicks[t])) return; // già deciso (da un altro client, o nel frattempo)
+    const { pickIndex, pick } = d.pairChoice;
+    const myPick = pairIndex === pickIndex ? pick : (pick === "RY" ? "GB" : "RY");
+    const options = myPick === "RY" ? ["red", "yellow"] : ["green", "blue"];
+    const color = options[Math.floor(Math.random() * 2)];
+    const otherColor = options.find((c) => c !== color);
+    d.colorPicks[pair[0]] = color;
+    d.colorPicks[pair[1]] = otherColor;
+  });
 }
 
 function renderDraftScreen(state) {
@@ -5446,18 +5575,33 @@ function renderDraftScreen(state) {
 function renderDraftWaiting(state) {
   const root = $("#app");
   root.innerHTML = "";
+  const botTokens = state.draft.botTokens || {};
   const tokens = state.draft.order.filter((t) => state.draft.players[t]);
   const items = [];
   for (let i = 0; i < 4; i++) {
     const t = tokens[i];
     if (t) {
+      const isBot = !!botTokens[t];
       items.push(
-        el("li", {}, el("span", { class: "wdot" }), state.draft.players[t] + (t === myToken ? " (tu)" : ""))
+        el(
+          "li",
+          {},
+          el("span", { class: "wdot" }),
+          (isBot ? "🤖 " : "") + state.draft.players[t] + (t === myToken ? " (tu)" : ""),
+          isBot
+            ? el(
+                "button",
+                { class: "bot-btn bot-btn-remove", style: "margin-left:8px;padding:2px 8px;font-size:0.72rem;", onclick: () => removeBotFromDraft(myRoomId, t) },
+                "Rimuovi"
+              )
+            : ""
+        )
       );
     } else {
       items.push(el("li", { class: "pending" }, el("span", { class: "wdot off" }), `in attesa del ${i + 1}° giocatore...`));
     }
   }
+  const missingCount = 4 - tokens.length;
   root.appendChild(
     el(
       "div",
@@ -5465,6 +5609,19 @@ function renderDraftWaiting(state) {
       el("h1", {}, "Tock"),
       el("p", { class: "muted" }, `Stanza ${myRoomId} — in attesa dei giocatori (${tokens.length}/4).`),
       el("ul", { class: "waiting-list" }, items),
+      missingCount > 0
+        ? el(
+            "div",
+            { class: "bot-cell-assign" },
+            el("div", { class: "bot-assign-label" }, "Manca qualcuno? Fallo giocare al computer:"),
+            el(
+              "div",
+              { class: "bot-btn-row" },
+              el("button", { class: "bot-btn", onclick: () => assignBotToDraft(myRoomId, "easy") }, "🤖 Aggiungi normale"),
+              el("button", { class: "bot-btn", onclick: () => assignBotToDraft(myRoomId, "hard") }, "🤖 Aggiungi difficile")
+            )
+          )
+        : "",
       el("p", { class: "muted" }, "Appena arrivano tutti e 4, parte da sola l'estrazione delle coppie.")
     )
   );
@@ -6262,6 +6419,114 @@ function botCommentOnTurn(state, seat, { captured, enteredHome, justWon }) {
   }
 }
 
+// ---- Il bot risponde alla chat (parole chiave) --------------------------
+// Non è un'IA che capisce il messaggio: riconosce solo alcune parole/frasi
+// tipiche (saluto, complimento, lamento per la sfortuna, incoraggiamento,
+// ringraziamento) e risponde con una battuta pertinente a CASO tra quelle
+// della categoria. Se non riconosce nulla, semplicemente non risponde —
+// meglio silenzioso che una risposta a sproposito.
+const BOT_CHAT_GREETING = [
+  "Ciao! 👋",
+  "Ehi, ciao a tutti!",
+  "Salve salve 🙂",
+];
+const BOT_CHAT_PRAISE = [
+  "Grazie, troppo gentile! 😄",
+  "Eheh, fortuna del principiante.",
+  "Grazie mille!",
+];
+const BOT_CHAT_CONSOLE = [
+  "Ci può stare, capita 🙂",
+  "Pazienza, la prossima va meglio.",
+  "Dai, si recupera!",
+];
+const BOT_CHAT_ENCOURAGE = [
+  "Sì dai, forza! 💪",
+  "Andiamo, si può fare!",
+  "Diamoci dentro!",
+];
+const BOT_CHAT_THANKS_REPLY = [
+  "Prego! 🙂",
+  "Figurati!",
+  "Di nulla!",
+];
+
+// [categoria, [parole/frasi che la fanno scattare]] — testate come parole
+// intere (non come sottostringhe) per evitare falsi positivi tipo "dai"
+// dentro un'altra parola.
+const BOT_CHAT_KEYWORDS = [
+  [BOT_CHAT_THANKS_REPLY, ["grazie"]],
+  [BOT_CHAT_GREETING, ["ciao", "salve", "hey", "buongiorno", "buonasera", "buonanotte"]],
+  [BOT_CHAT_PRAISE, ["bravo", "bravi", "brava", "ottimo", "ottima", "grande", "top", "forte", "forti", "complimenti"]],
+  [BOT_CHAT_CONSOLE, ["sfortuna", "sfiga", "peccato", "uffa", "argh", "che rabbia", "maledizione"]],
+  [BOT_CHAT_ENCOURAGE, ["forza", "dai", "andiamo", "diamoci dentro"]],
+];
+
+function textHasWord(text, phrase) {
+  // Frasi di più parole: basta che compaiano come sottostringa (poco senso
+  // testarle "a parola intera"). Parole singole: bordo di parola vero,
+  // altrimenti "dai" scatterebbe anche dentro "Aidan" o "sandaie".
+  if (phrase.includes(" ")) return text.includes(phrase);
+  return new RegExp("(^|[^a-zàèéìòù])" + phrase + "([^a-zàèéìòù]|$)", "i").test(text);
+}
+
+function botChatKeywordReply(text) {
+  const t = text.toLowerCase();
+  for (const [replies, words] of BOT_CHAT_KEYWORDS) {
+    if (words.some((w) => textHasWord(t, w))) return botRandomLine(replies);
+  }
+  return null;
+}
+
+let botChatTimer = null;
+function scheduleBotChatReply(fn) {
+  if (botChatTimer) return; // una risposta è già in programma
+  // Pausa "come se stesse scrivendo" — un po' più breve di quella tra una
+  // mossa e l'altra (scheduleBotAction), perché rispondere a un messaggio
+  // è un'azione più leggera di valutare una mossa.
+  const delay = 900 + Math.random() * 1300; // 0,9s – 2,2s
+  botChatTimer = setTimeout(() => {
+    botChatTimer = null;
+    fn().catch((e) => console.error("bot chat:", e));
+  }, delay);
+}
+
+// Chiamata ad ogni cambio di stato (vedi onStateChange), da OGNI client
+// collegato — come maybeAdvanceBotTurn, la vera scrittura avviene dentro
+// una transazione Firebase che ricontrolla tutto sui dati più recenti, così
+// se più client la programmano insieme la risposta viene comunque postata
+// una volta sola (il secondo tentativo trova già state.chat aggiornato con
+// `repliedToId` impostato e non fa nulla).
+function maybeAdvanceBotChat(state) {
+  if (!state || !Array.isArray(state.chat) || state.chat.length === 0) return;
+  if (!COLORS.some((c) => state.players[c] && state.players[c].isBot)) return;
+  const last = state.chat[state.chat.length - 1];
+  if (!last || last.id == null) return;
+  if (state.players[last.color] && state.players[last.color].isBot) return; // non risponde a un altro bot
+  if (state.chatBotRepliedToId === last.id) return; // già risposto (o già deciso di non farlo)
+  const reply = botChatKeywordReply(last.text);
+  if (!reply) return;
+  if (Math.random() >= 0.8) return; // non risponde SEMPRE, per non sembrare un automa perfetto
+  scheduleBotChatReply(() => botReplyInChat(last.id, reply));
+}
+
+async function botReplyInChat(sourceMsgId, fallbackReply) {
+  await updateState(myRoomId, (state) => {
+    if (!Array.isArray(state.chat) || state.chat.length === 0) return;
+    const last = state.chat[state.chat.length - 1];
+    // Rigioca la stessa verifica sui dati più freschi: se nel frattempo è
+    // arrivato un altro messaggio, o qualcun altro ha già risposto a
+    // questo, non fare nulla (evita doppie risposte da client diversi).
+    if (!last || last.id !== sourceMsgId) return;
+    if (state.chatBotRepliedToId === sourceMsgId) return;
+    state.chatBotRepliedToId = sourceMsgId;
+    const botSeats = COLORS.filter((c) => state.players[c] && state.players[c].isBot);
+    if (botSeats.length === 0) return;
+    const seat = botSeats[Math.floor(Math.random() * botSeats.length)];
+    postChatMessage(state, seat, fallbackReply);
+  });
+}
+
 async function botPlayTurn() {
   await updateState(myRoomId, (state) => {
     if (state.phase !== "playing") return;
@@ -6862,6 +7127,7 @@ function onStateChange(state) {
   if (!state) return;
   currentState = state;
   maybeAdvanceBotTurn(state);
+  maybeAdvanceBotChat(state);
   maybePlaySounds(state);
   renderDealerDrawScreen(state);
   renderStartControls(state);
