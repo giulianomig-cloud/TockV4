@@ -4432,7 +4432,7 @@ function renderPawns(svg, board, pawns, lastSwap, lastCapture, lastHomeEntry) {
 // Bumped by hand each time a new build is produced — shown in the lobby so
 // it's obvious at a glance whether you're on the latest version, instead
 // of guessing from a stale browser tab or cache.
-const APP_VERSION = "v4.23";
+const APP_VERSION = "v4.24";
 
 let myColor = null;
 let myRoomId = null;
@@ -5525,9 +5525,24 @@ function onDraftStateChange(state) {
     // Così un eventuale ricollegamento futuro passa dal normale
     // meccanismo per-colore, condiviso con la modalità manuale.
     try { localStorage.setItem("tock-claim-" + myRoomId + "-" + myColor, myToken); } catch (e) {}
+    // IMPORTANTE: costruisco la shell di gioco PRIMA di agganciare il
+    // listener Firebase e prima di chiamare onStateChange a mano. Prima
+    // l'ordine era invertito (watchRoom veniva attaccato prima di
+    // renderGameShell): se il listener richiamava onStateChange in modo
+    // sincrono (o comunque prima che renderGameShell fosse eseguita),
+    // la schermata di rivelazione del mazziere veniva creata e inserita
+    // in #app, e SUBITO DOPO renderGameShell() azzerava #app con
+    // innerHTML="" cancellandola — ma dealerDrawAnimShown risultava già
+    // marcato per questa stanza, quindi il richiamo successivo (quello nel
+    // requestAnimationFrame qui sotto) veniva bloccato dalla guardia e non
+    // la ricreava più. Risultato: il toast di riserva compariva (era stato
+    // mostrato durante la prima chiamata, prima della cancellazione) ma il
+    // riquadro dell'estrazione no. Costruendo prima la shell, qualunque
+    // chiamata a onStateChange (dal listener o dal nostro rAF) trova #app
+    // già pronta e non rischia più di essere spazzata via.
+    renderGameShell();
     roomRef(myRoomId).off("value");
     watchRoom(myRoomId, onStateChange);
-    renderGameShell();
     // Non aspetta il prossimo giro del listener Firebase per mostrare la
     // schermata di gioco vera e propria (mano già distribuita, rivelazione
     // del mazziere inclusa, vedi dealAndRevealDealer): lo stato lo abbiamo
@@ -5535,7 +5550,14 @@ function onDraftStateChange(state) {
     // dipendere da un secondo giro" già applicato altrove in questa
     // sessione, invece di fidarsi ciecamente del fatto che il listener
     // appena riattaccato richiami onStateChange in tempo utile da solo.
-    onStateChange(state);
+    //
+    // Un frame di ritardo (requestAnimationFrame) apposta: anche se ora
+    // #app è già stata ricostruita da renderGameShell() qui sopra, il
+    // frame appena dopo lascia comunque al browser il tempo di "vedere" lo
+    // stato iniziale del nuovo albero DOM prima di far partire eventuali
+    // animazioni CSS di comparsa, invece di crearle e animarle nello stesso
+    // istante sincrono in cui sono state inserite.
+    requestAnimationFrame(() => onStateChange(state));
     return;
   }
 
@@ -7316,6 +7338,14 @@ let dealerDrawAnimShown = { forRoom: null, done: false };
 // Mostrata come bottom sheet che sale da sotto (stesso openPicker/
 // closePicker usato per i picker del Jack/7/regole), non più come riquadro
 // fisso in mezzo alla pagina — su richiesta, coerente col resto dell'app.
+//
+// Torna a usare openPicker/#picker-wrap (il pannello a foglio che sale dal
+// basso, come Jack/7/regole): i due bug reali che rendevano invisibile la
+// rivelazione erano (a) l'ordine di renderGameShell()/watchRoom() in
+// onDraftStateChange e (b) una classe CSS in collisione con la pulizia del
+// banner di vittoria — nessuno dei due riguardava il meccanismo del picker
+// in sé, quindi ora che sono corretti non c'è più motivo di evitarlo, ed è
+// coerente con lo stile del resto dell'app.
 function renderDealerDrawScreen(state) {
   // Il gating è su state.dealerDraw (non più su state.phase === "dealerDraw":
   // vedi dealAndRevealDealer) — la fase passa subito a "exchanging" con le
@@ -7325,10 +7355,6 @@ function renderDealerDrawScreen(state) {
     if (dealerDrawAnimShown.forRoom === myRoomId) {
       dealerDrawAnimShown = { forRoom: null, done: false };
       closePicker();
-      // riabilita la chiusura toccando fuori per gli altri picker (qui
-      // sotto viene disattivata: è una sequenza automatica, non annullabile)
-      const bd = document.getElementById("picker-backdrop");
-      if (bd) bd.onclick = closePicker;
     }
     return;
   }
@@ -7336,6 +7362,11 @@ function renderDealerDrawScreen(state) {
   if (dealerDrawAnimShown.forRoom === myRoomId) return; // già in corso o conclusa per questa stanza
 
   dealerDrawAnimShown = { forRoom: myRoomId, done: false };
+  // Segnale di riserva sempre visibile (i toast funzionano già in tutta
+  // l'app): finché non è confermato che la schermata dell'estrazione si
+  // vede regolarmente su ogni dispositivo, questo garantisce che il
+  // risultato arrivi comunque.
+  showToast(`🎴 ${colorLabel(state.dealerDraw.winnerColor)} dà le carte per primo!`);
   const slotsByColor = {};
   const grid = el("div", { class: "dealer-draw-grid" });
   COLORS.forEach((c) => {
@@ -7355,15 +7386,13 @@ function renderDealerDrawScreen(state) {
   openPicker(
     el(
       "div",
-      { class: "lobby-card", style: "text-align:center;" },
-      el("h1", { style: "font-size:1.15rem;" }, "🎴 Estrazione del mazziere"),
-      el("p", { class: "muted", style: "margin:0 auto;max-width:280px;" }, "Si pesca a turno: chi trova l'Asso di Cuori dà le carte per primo."),
+      { class: "choice-box", style: "text-align:center;" },
+      el("h1", { style: "font-size:1.15rem;margin:0 0 6px;" }, "🎴 Estrazione del mazziere"),
+      el("p", { class: "muted", style: "margin:0 auto 14px;font-weight:500;" }, "Si pesca a turno: chi trova l'Asso di Cuori dà le carte per primo."),
       grid,
       el("div", { id: "dealer-draw-banner" })
     )
   );
-  const bd = ensurePickerBackdrop();
-  bd.onclick = null; // sequenza automatica: non si chiude toccando fuori
   animateDealerDraw(state.dealerDraw.sequence);
 }
 
