@@ -407,6 +407,8 @@ h1 { font-size: 1.4rem; margin: 0 0 4px; color: var(--ink); }
   color: var(--ink);
 }
 .waiting-list li.pending { opacity: 0.55; font-weight: 500; font-style: italic; background: transparent; border-style: dashed; }
+.waiting-list li .wname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.waiting-list li .bot-btn-remove { flex-shrink: 0; margin-left: 8px; padding: 2px 8px; font-size: 0.72rem; }
 .wdot { width: 8px; height: 8px; border-radius: 50%; background: var(--gold); flex-shrink: 0; }
 .wdot.off { background: #C7BCA4; }
 
@@ -4422,7 +4424,7 @@ function renderPawns(svg, board, pawns, lastSwap, lastCapture, lastHomeEntry) {
 // Bumped by hand each time a new build is produced — shown in the lobby so
 // it's obvious at a glance whether you're on the latest version, instead
 // of guessing from a stale browser tab or cache.
-const APP_VERSION = "v4.17";
+const APP_VERSION = "v4.19";
 
 let myColor = null;
 let myRoomId = null;
@@ -5318,6 +5320,7 @@ async function assignBotToDraft(roomId, botLevel) {
       state.draft.order.push(token);
       if (!state.draft.botTokens) state.draft.botTokens = {};
       state.draft.botTokens[token] = level;
+      maybeStartPairDraw(state);
     });
   } catch (e) {
     showToast("Non riesco ad aggiungere il computer: " + describeError(e));
@@ -5461,6 +5464,7 @@ async function joinDraftRoom(roomId) {
         }
         if (!state.draft.players[myToken]) state.draft.order.push(myToken);
         state.draft.players[myToken] = myName;
+        maybeStartPairDraw(state);
         return state;
       } catch (e) {
         caughtError = e;
@@ -5524,36 +5528,62 @@ function onDraftStateChange(state) {
   renderDraftScreen(state);
 }
 
+// Estrae il sorteggio delle coppie non appena il 4° posto si riempie.
+// Va chiamata DIRETTAMENTE dentro la stessa transazione che scrive il 4°
+// giocatore (join di una persona, o aggiunta dell'ultimo bot) — non solo
+// da maybeAdvanceDraft in risposta al listener "value" — così la stanza
+// passa al sorteggio in modo atomico, senza dover contare su un secondo
+// giro di scrittura innescato dopo il fatto: se per qualsiasi motivo quel
+// secondo giro tardasse o non scattasse, la stanza restava bloccata a
+// "in attesa" anche con 4/4 giocatori già presenti.
+function maybeStartPairDraw(state) {
+  const d = state.draft;
+  if (!d || d.pairDraw) return;
+  if (Object.keys(d.players).length !== 4) return;
+  const tokens = d.order.filter((t) => d.players[t]).slice(0, 4);
+  const shuffled = shuffle(tokens);
+  d.pairDraw = { pairs: [[shuffled[0], shuffled[1]], [shuffled[2], shuffled[3]]] };
+}
+
 // Fa avanzare l'estrazione da uno stato all'altro. È chiamata da tutti e 4
 // i client ogni volta che lo stato cambia, ma ogni passaggio è protetto da
 // un controllo dentro la transazione Firebase, quindi anche se più client
 // la eseguono nello stesso istante il risultato viene scritto una volta
-// sola (gli altri tentativi diventano no-op).
+// sola (gli altri tentativi diventano no-op). Resta come rete di sicurezza
+// oltre a maybeStartPairDraw (es. se il 4° giocatore fosse entrato prima
+// di questo aggiornamento del codice, o in un caso limite non coperto).
 function maybeAdvanceDraft(state) {
   const d = state.draft;
   if (!d) return;
 
   if (Object.keys(d.players).length === 4 && !d.pairDraw) {
     updateState(myRoomId, (s) => {
-      if (s.draft.pairDraw) return; // già estratto da un altro client
-      const tokens = s.draft.order.filter((t) => s.draft.players[t]).slice(0, 4);
-      const shuffled = shuffle(tokens);
-      s.draft.pairDraw = { pairs: [[shuffled[0], shuffled[1]], [shuffled[2], shuffled[3]]] };
+      maybeStartPairDraw(s);
     }).catch(() => {});
     return;
   }
 
   if (d.pairDraw && Object.keys(d.colorPicks).length === 4 && Object.keys(state.players).length < 4) {
     updateState(myRoomId, (s) => {
-      if (Object.keys(s.players).length >= 4) return; // già finalizzato
-      if (Object.keys(s.draft.colorPicks).length < 4) return;
-      for (const [token, color] of Object.entries(s.draft.colorPicks)) {
-        const botLevel = s.draft.botTokens && s.draft.botTokens[token];
-        s.players[color] = botLevel
-          ? { name: s.draft.players[token], token, isBot: true, botLevel }
-          : { name: s.draft.players[token], token };
-      }
+      maybeFinalizeDraft(s);
     }).catch(() => {});
+  }
+}
+
+// Anche questa, come maybeStartPairDraw/assignBotPairColors, va richiamata
+// direttamente dentro la stessa transazione che porta colorPicks a 4 (vedi
+// pickSoloColor e pickColorPair) e non solo dal giro di sicurezza qui sopra
+// innescato dal listener.
+function maybeFinalizeDraft(state) {
+  const d = state.draft;
+  if (!d) return;
+  if (Object.keys(state.players).length >= 4) return; // già finalizzato
+  if (Object.keys(d.colorPicks).length < 4) return;
+  for (const [token, color] of Object.entries(d.colorPicks)) {
+    const botLevel = d.botTokens && d.botTokens[token];
+    state.players[color] = botLevel
+      ? { name: d.players[token], token, isBot: true, botLevel }
+      : { name: d.players[token], token };
   }
 }
 
@@ -5590,20 +5620,28 @@ function maybeAdvanceDraftBots(state) {
   }
 }
 
+// Logica pura (nessuna transazione propria) così può essere richiamata sia
+// da botPickPairColors (giro separato, rete di sicurezza) sia direttamente
+// dentro la transazione di pickColorPair — vedi lì per il perché.
+function assignBotPairColors(state, pairIndex) {
+  const d = state.draft;
+  if (!d || !d.pairDraw || !d.pairChoice) return;
+  const pair = d.pairDraw.pairs[pairIndex];
+  if (!pair) return;
+  if (pair.some((t) => d.colorPicks[t])) return; // già deciso
+  const { pickIndex, pick } = d.pairChoice;
+  const myPick = pairIndex === pickIndex ? pick : (pick === "RY" ? "GB" : "RY");
+  const options = myPick === "RY" ? ["red", "yellow"] : ["green", "blue"];
+  const color = options[Math.floor(Math.random() * 2)];
+  const otherColor = options.find((c) => c !== color);
+  d.colorPicks[pair[0]] = color;
+  d.colorPicks[pair[1]] = otherColor;
+}
+
 async function botPickPairColors(pairIndex) {
   await updateState(myRoomId, (state) => {
-    const d = state.draft;
-    if (!d || !d.pairDraw || !d.pairChoice) return;
-    const pair = d.pairDraw.pairs[pairIndex];
-    if (!pair) return;
-    if (pair.some((t) => d.colorPicks[t])) return; // già deciso (da un altro client, o nel frattempo)
-    const { pickIndex, pick } = d.pairChoice;
-    const myPick = pairIndex === pickIndex ? pick : (pick === "RY" ? "GB" : "RY");
-    const options = myPick === "RY" ? ["red", "yellow"] : ["green", "blue"];
-    const color = options[Math.floor(Math.random() * 2)];
-    const otherColor = options.find((c) => c !== color);
-    d.colorPicks[pair[0]] = color;
-    d.colorPicks[pair[1]] = otherColor;
+    assignBotPairColors(state, pairIndex);
+    maybeFinalizeDraft(state);
   });
 }
 
@@ -5631,11 +5669,15 @@ function renderDraftWaiting(state) {
           "li",
           {},
           el("span", { class: "wdot" }),
-          (isBot ? "🤖 " : "") + state.draft.players[t] + (t === myToken ? " (tu)" : ""),
+          el(
+            "span",
+            { class: "wname" },
+            (isBot ? "🤖 " : "") + state.draft.players[t] + (t === myToken ? " (tu)" : "")
+          ),
           isBot
             ? el(
                 "button",
-                { class: "bot-btn bot-btn-remove", style: "margin-left:8px;padding:2px 8px;font-size:0.72rem;", onclick: () => removeBotFromDraft(myRoomId, t) },
+                { class: "bot-btn bot-btn-remove", onclick: () => removeBotFromDraft(myRoomId, t) },
                 "Rimuovi"
               )
             : ""
@@ -5808,6 +5850,18 @@ async function pickColorPair(pairIndex, pick) {
     await updateState(myRoomId, (state) => {
       if (state.draft.pairChoice) return; // già deciso da qualcun altro
       state.draft.pairChoice = { pickIndex: pairIndex, pick };
+      // Se l'altra coppia è composta da soli bot, nessun umano cliccherà
+      // mai per lei: le assegniamo subito i colori qui, nella stessa
+      // scrittura che fissa la scelta — invece di aspettare un giro
+      // separato (maybeAdvanceDraftBots/botPickPairColors) innescato dal
+      // listener, che ha già mostrato di non essere sempre affidabile.
+      const botTokens = state.draft.botTokens || {};
+      const otherPairIndex = pairIndex === 0 ? 1 : 0;
+      const otherPair = state.draft.pairDraw.pairs[otherPairIndex];
+      if (otherPair && otherPair.every((t) => botTokens[t])) {
+        assignBotPairColors(state, otherPairIndex);
+      }
+      maybeFinalizeDraft(state);
     });
   } catch (e) {
     console.error(e);
@@ -5865,6 +5919,7 @@ async function pickSoloColor(color) {
       if (partnerToken && !state.draft.colorPicks[partnerToken]) {
         state.draft.colorPicks[partnerToken] = otherColor;
       }
+      maybeFinalizeDraft(state);
     });
   } catch (e) {
     showToast(describeError(e));
