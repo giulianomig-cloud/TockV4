@@ -595,60 +595,44 @@ button.danger:active {
   filter: brightness(0.9);
 }
 
-/* Barra in alto in partita: stanza+identità a sinistra, 3 pulsanti
-   rotondi solo-icona a destra — come in In-partita.dc.html, non più tre
-   pillole di testo che vanno a capo sotto una riga separata. */
-.top-bar {
+/* Riga dei pulsanti menu (solo icona): sta da sola in cima, sopra tutto
+   il resto — prima stava affiancata a stanza/nome/squadra nella stessa
+   riga (.top-bar), ora quella riga è stata spostata subito sopra il
+   tabellone (vedi .identity-row) e qui restano solo i pulsanti. */
+.top-actions-row {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 16px;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-bottom: 10px;
 }
-.top-bar-id { min-width: 0; }
-.top-bar-room {
+/* Stanza + chi sei + squadra, tutto su un'unica riga subito sopra il
+   tabellone (prima erano due righe separate in cima alla pagina, sopra i
+   pulsanti menu). flex-wrap invece di ellipsis/troncamento: con un nome
+   lungo o uno schermo stretto va a capo, ma il testo resta sempre
+   leggibile per intero. */
+.identity-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+.identity-room {
   font-size: 0.68rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.07em;
   color: var(--muted-3);
 }
-.top-bar-me {
-  font-size: 0.82rem;
-  font-weight: 700;
-  margin-top: 3px;
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
-  min-width: 0;
-}
-/* Nome e squadra sono due righe SEPARATE (non un unico testo che va a capo
-   dove capita, tagliando in mezzo a "squadra Rosso +\nGiallo") — così la
-   squadra sta sempre per intero sulla riga sotto il nome, mai spezzata. */
-.top-bar-me-text {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-}
-.top-bar-me-name {
-  white-space: normal;
-  word-break: break-word;
-}
-.top-bar-me-team {
+.identity-sep { color: var(--muted-3); font-weight: 400; }
+.identity-team {
   font-size: 0.76rem;
   font-weight: 600;
   color: var(--muted-3);
-  white-space: normal;
-  word-break: break-word;
 }
-.top-bar-me .swatch { flex-shrink: 0; margin-top: 3px; }
-.top-bar-room {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.top-bar-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.identity-row .swatch { flex-shrink: 0; }
 .icon-btn {
   width: 34px;
   height: 34px;
@@ -1175,18 +1159,12 @@ button.secondary.selected {
   font-size: 0.9rem;
 }
 
-.log-box {
-  background: #FFFFFF;
-  border: 1.5px solid var(--panel-border);
-  border-radius: 16px;
-  padding: 12px 14px;
-  font-size: 0.85rem;
-  max-height: 320px;
-  overflow-y: auto;
-}
 /* Timeline verticale (linea + pallini agganciati), come in Registro.dc.html
-   — non più righe separate da un bordo orizzontale con solo un puntino. */
-.log-timeline { position: relative; }
+   — non più righe separate da un bordo orizzontale con solo un puntino.
+   Vive dentro il foglio a comparsa aperto dal bottone "Registro" tra i
+   pulsanti menu (vedi openLogPicker), non più in un riquadro fisso nella
+   pagina. */
+.log-timeline { position: relative; max-height: 55vh; overflow-y: auto; }
 .log-timeline::before {
   content: ""; position: absolute; left: 10px; top: 6px; bottom: 6px; width: 2px;
   background: var(--panel-border);
@@ -1200,20 +1178,6 @@ button.secondary.selected {
 }
 .log-text { padding-top: 2px; line-height: 1.4; }
 .log-text b { color: var(--ink); }
-.log-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-weight: 800;
-  font-size: 0.8rem;
-  color: var(--ink);
-  margin-bottom: 8px;
-  position: sticky;
-  top: 0;
-  background: #FFFFFF;
-  cursor: pointer;
-  user-select: none;
-}
 .log-controls {
   display: flex;
   align-items: center;
@@ -1246,7 +1210,7 @@ button.secondary.selected {
 /* Bottone rotondo che apre la chat — vedi #chat-wrap in renderGameShell
    per il perché sta qui (subito sotto le pedine) invece che in fondo alla
    pagina o incollato allo schermo. */
-.chat-fab-row { display: flex; justify-content: flex-end; margin: 2px 0 12px; }
+.chat-fab-row { display: flex; justify-content: flex-end; flex-shrink: 0; margin-bottom: 10px; }
 .chat-fab {
   position: relative;
   width: 44px; height: 44px; border-radius: 50%;
@@ -4467,7 +4431,7 @@ function renderPawns(svg, board, pawns, lastSwap, lastCapture, lastHomeEntry) {
 // Bumped by hand each time a new build is produced — shown in the lobby so
 // it's obvious at a glance whether you're on the latest version, instead
 // of guessing from a stale browser tab or cache.
-const APP_VERSION = "v4.28";
+const APP_VERSION = "v4.31";
 
 let myColor = null;
 let myRoomId = null;
@@ -6085,92 +6049,96 @@ function renderGameShell() {
       { class: "game-shell" },
       el(
         "div",
-        { class: "top-bar" },
+        { class: "top-actions-row" },
         el(
-          "div",
-          { class: "top-bar-id" },
-          el("div", { class: "top-bar-room" }, "Stanza " + myRoomId),
-          el(
-            "div",
-            { class: "top-bar-me" },
-            swatchDot(myColor),
-            el(
-              "div",
-              { class: "top-bar-me-text" },
-              el("div", { class: "top-bar-me-name" }, myName),
-              el("div", { class: "top-bar-me-team" }, `squadra ${TEAM_LABEL[TEAM_OF[myColor]]}`)
-            )
-          )
+          "button",
+          { id: "sound-toggle-btn", class: "icon-btn" + (soundMuted ? " icon-btn-muted" : ""), "aria-label": soundMuted ? "Riattiva audio" : "Disattiva audio", onclick: toggleSoundMuted },
+          soundIconSvg(soundMuted)
+        ),
+        el(
+          "button",
+          { class: "icon-btn", "aria-label": "Invita amici", onclick: () => shareInviteLink(myRoomId) },
+          svgIcon(14, 14, "0 0 24 24", "#5A5145", 2.2, [
+            ["circle", { cx: 18, cy: 5, r: 3 }],
+            ["circle", { cx: 6, cy: 12, r: 3 }],
+            ["circle", { cx: 18, cy: 19, r: 3 }],
+            ["line", { x1: 8.6, y1: 10.6, x2: 15.4, y2: 6.4 }],
+            ["line", { x1: 8.6, y1: 13.4, x2: 15.4, y2: 17.6 }],
+          ])
+        ),
+        el(
+          "button",
+          { class: "icon-btn", "aria-label": "Registro mosse", onclick: openLogPicker },
+          svgIcon(14, 14, "0 0 24 24", "#5A5145", 2.2, [
+            ["line", { x1: 8, y1: 6, x2: 21, y2: 6 }],
+            ["line", { x1: 8, y1: 12, x2: 21, y2: 12 }],
+            ["line", { x1: 8, y1: 18, x2: 21, y2: 18 }],
+            ["line", { x1: 3, y1: 6, x2: 3.01, y2: 6 }],
+            ["line", { x1: 3, y1: 12, x2: 3.01, y2: 12 }],
+            ["line", { x1: 3, y1: 18, x2: 3.01, y2: 18 }],
+          ])
         ),
         el(
           "div",
-          { class: "top-bar-actions" },
+          { class: "icon-btn-pair" },
           el(
             "button",
-            { id: "sound-toggle-btn", class: "icon-btn" + (soundMuted ? " icon-btn-muted" : ""), "aria-label": soundMuted ? "Riattiva audio" : "Disattiva audio", onclick: toggleSoundMuted },
-            soundIconSvg(soundMuted)
+            { class: "icon-btn-half", "aria-label": "Mossa precedente", onclick: () => stepReplay(-1) },
+            svgIcon(13, 13, "0 0 24 24", "#5A5145", 2.4, [["polyline", { points: "15 18 9 12 15 6" }]])
           ),
           el(
             "button",
-            { class: "icon-btn", "aria-label": "Invita amici", onclick: () => shareInviteLink(myRoomId) },
-            svgIcon(14, 14, "0 0 24 24", "#5A5145", 2.2, [
-              ["circle", { cx: 18, cy: 5, r: 3 }],
-              ["circle", { cx: 6, cy: 12, r: 3 }],
-              ["circle", { cx: 18, cy: 19, r: 3 }],
-              ["line", { x1: 8.6, y1: 10.6, x2: 15.4, y2: 6.4 }],
-              ["line", { x1: 8.6, y1: 13.4, x2: 15.4, y2: 17.6 }],
-            ])
-          ),
-          el(
-            "div",
-            { class: "icon-btn-pair" },
-            el(
-              "button",
-              { class: "icon-btn-half", "aria-label": "Mossa precedente", onclick: () => stepReplay(-1) },
-              svgIcon(13, 13, "0 0 24 24", "#5A5145", 2.4, [["polyline", { points: "15 18 9 12 15 6" }]])
-            ),
-            el(
-              "button",
-              { class: "icon-btn-half", "aria-label": "Mossa successiva", onclick: () => stepReplay(1) },
-              svgIcon(13, 13, "0 0 24 24", "#5A5145", 2.4, [["polyline", { points: "9 18 15 12 9 6" }]])
-            )
-          ),
-          el(
-            "button",
-            { class: "icon-btn", "aria-label": "Regole", onclick: openRulesPanel },
-            svgIcon(14, 14, "0 0 24 24", "#5A5145", 2.2, [
-              ["path", { d: "M4 19.5A2.5 2.5 0 0 1 6.5 17H20" }],
-              ["path", { d: "M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" }],
-            ])
-          ),
-          el(
-            "button",
-            { class: "icon-btn", "aria-label": "Torna alla schermata iniziale", onclick: leaveGameToHome },
-            svgIcon(14, 14, "0 0 24 24", "#5A5145", 2.2, [
-              ["path", { d: "M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" }],
-              ["polyline", { points: "9 22 9 12 15 12 15 22" }],
-            ])
+            { class: "icon-btn-half", "aria-label": "Mossa successiva", onclick: () => stepReplay(1) },
+            svgIcon(13, 13, "0 0 24 24", "#5A5145", 2.4, [["polyline", { points: "9 18 15 12 9 6" }]])
           )
+        ),
+        el(
+          "button",
+          { class: "icon-btn", "aria-label": "Regole", onclick: openRulesPanel },
+          svgIcon(14, 14, "0 0 24 24", "#5A5145", 2.2, [
+            ["path", { d: "M4 19.5A2.5 2.5 0 0 1 6.5 17H20" }],
+            ["path", { d: "M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" }],
+          ])
+        ),
+        el(
+          "button",
+          { class: "icon-btn", "aria-label": "Torna alla schermata iniziale", onclick: leaveGameToHome },
+          svgIcon(14, 14, "0 0 24 24", "#5A5145", 2.2, [
+            ["path", { d: "M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" }],
+            ["polyline", { points: "9 22 9 12 15 12 15 22" }],
+          ])
         )
       ),
       el("div", { id: "conn-banner" }),
       el("div", { id: "dealer-draw-wrap" }),
+      // Stanza + chi sei + squadra: un'unica riga, subito sopra il
+      // tabellone (prima stava in cima alla pagina, su due righe, accanto
+      // ai pulsanti menu — richiesto di accorparla e spostarla qui).
+      el(
+        "div",
+        { class: "identity-row" },
+        el("span", { class: "identity-room" }, "Stanza " + myRoomId),
+        el("span", { class: "identity-sep" }, "·"),
+        swatchDot(myColor),
+        el("span", { class: "identity-name" }, myName),
+        el("span", { class: "identity-sep" }, "·"),
+        el("span", { class: "identity-team" }, `squadra ${TEAM_LABEL[TEAM_OF[myColor]]}`)
+      ),
       el("div", { id: "board-wrap" }),
       el("div", { id: "start-wrap" }),
       el("div", { id: "exchange-wrap" }),
       el("div", { id: "turn-indicator" }),
       el("div", { id: "hand-wrap", class: "hand-row" }),
       el("div", { id: "status-wrap" }),
-      // Il bottone della chat vive qui — subito sotto i campi con le
-      // pedine — non più come riga da aprire più giù nella pagina
-      // (segnalato: "la chat è un po' sotto e non è visibile a colpo
-      // d'occhio"). Non è "flottante" in senso stretto (non è position:
-      // fixed, quindi non resta incollato allo schermo scorrendo): è stato
-      // scelto apposta così, per non rischiare di finire sopra le carte in
-      // mano più in basso, che sono la zona più delicata da toccare.
+      // Bottone chat, subito sotto i campi con le pedine (segnalato: "la
+      // chat è un po' sotto e non è visibile a colpo d'occhio"). Non è
+      // "flottante" in senso stretto (non è position:fixed, quindi non
+      // resta incollato allo schermo scorrendo): scelto apposta così, per
+      // non rischiare di finire sopra le carte in mano più in basso, la
+      // zona più delicata da toccare. Il registro ora è tra i pulsanti
+      // menu in alto (vedi openLogPicker), non più qui accanto alla chat.
       el("div", { id: "chat-wrap" }),
       el("div", { id: "picker-wrap" }),
-      el("div", { id: "log-wrap", class: "log-box" }),
     )
   );
   boardSvg = buildBoardSVG($("#board-wrap"), BOARD);
@@ -8099,6 +8067,7 @@ function closePicker() {
     _chatFabRenderKey = null;
     if (currentState) renderChatFab(currentState.chat || []);
   }
+  logPickerOpen = false;
 }
 
 // Gesto di trascinamento sulla maniglia del picker: segue il dito 1:1 verso
@@ -9008,40 +8977,47 @@ function displayLogLine(line) {
 
 let logExpanded = false;
 
-// Chiuso di default quando si entra in partita, come la chat — apribile su
-// richiesta cliccando l'intestazione (vedi toggleLogCollapsed).
-let logCollapsed = true;
+// Il registro non è più un riquadro fisso nella pagina: è un bottone tra
+// quelli del menu in alto (vedi #app-shell top-actions-row) che apre il
+// contenuto nello stesso foglio a comparsa dal basso (openPicker) già
+// usato per Jack/7/regole/chat — coerente col resto dell'app, invece di
+// una casella ad accordion in pagina.
+let logPickerOpen = false;
 
-function renderLog(state) {
-  const wrap = $("#log-wrap");
-  wrap.innerHTML = "";
+function openLogPicker() {
+  if (!currentState) return;
+  logPickerOpen = true;
+  openPicker(buildLogPickerContent(currentState));
+}
+
+function buildLogPickerContent(state) {
   const all = state.log || [];
-
-  const header = el(
+  const list = el("div", { id: "log-list", class: "log-timeline" });
+  fillLogList(list, state);
+  return el(
     "div",
-    { class: "log-header", onclick: toggleLogCollapsed },
-    el("span", {}, `Registro (${all.length} mosse)`),
-    el("span", {}, logCollapsed ? "▸" : "▾")
+    { class: "choice-box" },
+    el("p", { id: "log-title", style: "font-weight:800;font-size:1.05rem;margin:0 0 10px;" }, `📜 Registro (${all.length} mosse)`),
+    el(
+      "div",
+      { class: "log-controls" },
+      all.length > 8
+        ? el("button", { id: "log-toggle-btn", class: "log-toggle", onclick: toggleLog }, logExpanded ? "Mostra solo recenti" : "Mostra tutto")
+        : "",
+      el("button", { class: "log-toggle", style: "margin-left:10px;", onclick: () => downloadDebugDump(currentState) }, "⬇ Scarica")
+    ),
+    list
   );
-  wrap.appendChild(header);
-  if (logCollapsed) return;
+}
 
-  const controls = el(
-    "div",
-    { class: "log-controls" },
-    all.length > 8
-      ? el("button", { class: "log-toggle", onclick: (e) => { e.stopPropagation(); toggleLog(); } }, logExpanded ? "Mostra solo recenti" : "Mostra tutto")
-      : "",
-    el("button", { class: "log-toggle", style: "margin-left:10px;", onclick: (e) => { e.stopPropagation(); downloadDebugDump(state); } }, "⬇ Scarica")
-  );
-  wrap.appendChild(controls);
-
+function fillLogList(list, state) {
+  list.innerHTML = "";
+  const all = state.log || [];
   const items = (logExpanded ? all : all.slice(-8)).slice().reverse();
-  const timeline = el("div", { class: "log-timeline" });
   items.forEach((rawLine) => {
     const line = displayLogLine(rawLine);
     const color = detectLogColor(line);
-    timeline.appendChild(
+    list.appendChild(
       el(
         "div",
         { class: "log-line" },
@@ -9050,7 +9026,21 @@ function renderLog(state) {
       )
     );
   });
-  wrap.appendChild(timeline);
+}
+
+// Aggiorna il contenuto DENTRO il foglio già aperto (se è ancora davvero
+// quello del registro — un altro picker potrebbe averlo sostituito nel
+// frattempo, es. un'estrazione mazziere che scatta da sola).
+function renderLog(state) {
+  if (!logPickerOpen) return;
+  const list = document.getElementById("log-list");
+  const title = document.getElementById("log-title");
+  if (!list || !title) {
+    logPickerOpen = false;
+    return;
+  }
+  title.textContent = `📜 Registro (${(state.log || []).length} mosse)`;
+  fillLogList(list, state);
 }
 
 // Exports the full move log PLUS the current board state (positions,
@@ -9085,12 +9075,10 @@ function downloadDebugDump(state) {
 
 function toggleLog() {
   logExpanded = !logExpanded;
-  if (currentState) renderLog(currentState);
-}
-
-function toggleLogCollapsed() {
-  logCollapsed = !logCollapsed;
-  if (currentState) renderLog(currentState);
+  const btn = document.getElementById("log-toggle-btn");
+  if (btn) btn.textContent = logExpanded ? "Mostra solo recenti" : "Mostra tutto";
+  const list = document.getElementById("log-list");
+  if (list && currentState) fillLogList(list, currentState);
 }
 
 function renderWinBanner(state) {
