@@ -2546,10 +2546,21 @@ function applyJackSwap(state, a, b, active) {
   }
   state.pawns[a.color][a.pawnIndex] = posB;
   state.pawns[b.color][b.pawnIndex] = posA;
-  // a Jack swap is a teleport, not a completed forward lap — reset the
-  // ambiguous "sitting on own base" flag to the safe default either way.
-  setLapped(state, a.color, a.pawnIndex, false);
-  setLapped(state, b.color, b.pawnIndex, false);
+  // a Jack swap is a teleport, not a completed forward lap, so the "lapped"
+  // flag can't mean "finished a real lap" here — but it still has to say
+  // whether a pawn now sitting exactly on ITS OWN base cell counts as
+  // "just entered" (protected from further Jacks, 0 steps travelled) or
+  // not. A pawn eligible for a Jack swap was always already out of home
+  // (jackableTargets only offers pawns with pos < 1000), so it can never
+  // be a fresh entry — landing back on its own base via a swap is always a
+  // revisit, never a first deployment. Marking it lapped=true when that
+  // happens keeps it correctly UNPROTECTED and ready for the home
+  // stretch, instead of wrongly re-flagging it as "just entered" (bug
+  // reported: a pawn Jacked onto its own base became un-jackable
+  // afterwards). When the destination isn't the pawn's own base cell, the
+  // flag is irrelevant (see stepsFromOwnBase), so false is a safe default.
+  setLapped(state, a.color, a.pawnIndex, posB === BOARD.baseIndex[a.color]);
+  setLapped(state, b.color, b.pawnIndex, posA === BOARD.baseIndex[b.color]);
   // Il Jack può scambiare DUE PEDINE QUALSIASI sul percorso, non
   // necessariamente quella di chi gioca la carta — quindi il colore di chi
   // ha effettivamente giocato (active) va detto esplicitamente, altrimenti
@@ -4472,7 +4483,7 @@ function renderPawns(svg, board, pawns, lastSwap, lastCapture, lastHomeEntry) {
 // Bumped by hand each time a new build is produced — shown in the lobby so
 // it's obvious at a glance whether you're on the latest version, instead
 // of guessing from a stale browser tab or cache.
-const APP_VERSION = "v4.39";
+const APP_VERSION = "v4.40";
 
 let myColor = null;
 let myRoomId = null;
