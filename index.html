@@ -3336,55 +3336,63 @@ async function updateState(roomId, mutatorFn) {
   // read-modify-write with a transaction so two players acting at the
   // same instant don't overwrite each other.
   const ref = roomRef(roomId);
-  let caughtError = null;
-  let justWon = false;
-  let roomMissing = false;
-  const result = await ref
-    .transaction((current) => {
-      if (current === null) {
-        // La stanza non esiste (più) — es. cancellata a mano dalla console
-        // Firebase mentre qualcuno ci stava ancora giocando dentro. Prima
-        // si restituiva silenziosamente `current` (cioè null): la
-        // transazione "committava" senza aver applicato nessuna mossa, e
-        // chi aveva giocato non aveva alcun modo di saperlo — restava con
-        // l'ultima schermata vista, senza spiegazione. Ora si aborta la
-        // transazione con un errore dedicato e riconoscibile (roomMissing),
-        // così il chiamante può mostrare un messaggio chiaro invece del
-        // generico "mossa non salvata".
-        roomMissing = true;
-        return; // undefined -> abort
-      }
-      try {
-        const copy = normalizeState(JSON.parse(JSON.stringify(current)));
-        const wasFinished = !!copy.winnerTeam;
-        mutatorFn(copy);
-        // riflette solo l'ULTIMO tentativo della transazione (in caso di
-        // retry per contesa la callback può girare più volte): se quello che
-        // viene poi davvero confermato è quello che ha fatto scattare la
-        // vittoria, va bene contarlo una volta sola qui sotto.
-        justWon = !wasFinished && !!copy.winnerTeam;
-        return copy;
-      } catch (e) {
+  // Firebase può invocare la callback della transazione con `current ===
+  // null` anche quando la stanza esiste benissimo sul server: succede
+  // quando questo client non ha ancora quel path in cache locale (es.
+  // nessun listener `watchRoom` attivo su di esso in quel momento) — la
+  // primissima chiamata parte "alla cieca" con null, e solo un tentativo
+  // NON abortito farebbe scattare il confronto col server che la
+  // correggerebbe. Restituire `undefined` (come si fa per abortire)
+  // interrompe subito la transazione PRIMA di quel confronto: si otteneva
+  // quindi un falso "stanza cancellata" anche per stanze appena create,
+  // semplicemente perché non ancora in cache (bug introdotto insieme al
+  // rilevamento vero e proprio). Per questo, prima di dichiarare la stanza
+  // davvero sparita, si verifica con una lettura diretta e — se in realtà
+  // esiste — si riprova (stavolta il client la trova già in cache).
+  for (let attempt = 0; attempt < 2; attempt++) {
+    let caughtError = null;
+    let justWon = false;
+    let roomMissing = false;
+    const result = await ref
+      .transaction((current) => {
+        if (current === null) {
+          roomMissing = true;
+          return; // undefined -> abort this attempt (non necessariamente la stanza)
+        }
+        try {
+          const copy = normalizeState(JSON.parse(JSON.stringify(current)));
+          const wasFinished = !!copy.winnerTeam;
+          mutatorFn(copy);
+          // riflette solo l'ULTIMO tentativo della transazione (in caso di
+          // retry per contesa la callback può girare più volte): se quello che
+          // viene poi davvero confermato è quello che ha fatto scattare la
+          // vittoria, va bene contarlo una volta sola qui sotto.
+          justWon = !wasFinished && !!copy.winnerTeam;
+          return copy;
+        } catch (e) {
+          caughtError = e;
+          return undefined; // abort this transaction attempt
+        }
+      })
+      .catch((e) => {
         caughtError = e;
-        return undefined; // abort this transaction attempt
-      }
-    })
-    .catch((e) => {
-      caughtError = e;
-      return null;
-    });
-  if (roomMissing) {
-    throw Object.assign(new Error("Questa stanza non esiste più (forse è stata cancellata)."), { code: "ROOM_MISSING" });
+        return null;
+      });
+    if (roomMissing) {
+      const snap = await ref.get().catch(() => null);
+      if (snap && snap.exists() && attempt === 0) continue; // falso allarme: esiste, riprova con la cache aggiornata
+      throw Object.assign(new Error("Questa stanza non esiste più (forse è stata cancellata)."), { code: "ROOM_MISSING" });
+    }
+    if (caughtError) {
+      console.error("updateState error:", caughtError);
+      throw caughtError;
+    }
+    if (result && result.committed === false) {
+      throw new Error("La mossa non è stata salvata (transazione non completata). Riprova.");
+    }
+    if (justWon && result && result.committed !== false) incrementStat("gamesFinished");
+    return result;
   }
-  if (caughtError) {
-    console.error("updateState error:", caughtError);
-    throw caughtError;
-  }
-  if (result && result.committed === false) {
-    throw new Error("La mossa non è stata salvata (transazione non completata). Riprova.");
-  }
-  if (justWon && result && result.committed !== false) incrementStat("gamesFinished");
-  return result;
 }
 
 </script>
@@ -4421,7 +4429,7 @@ function renderPawns(svg, board, pawns, lastSwap, lastCapture, lastHomeEntry) {
 // Bumped by hand each time a new build is produced — shown in the lobby so
 // it's obvious at a glance whether you're on the latest version, instead
 // of guessing from a stale browser tab or cache.
-const APP_VERSION = "v4.15";
+const APP_VERSION = "v4.16";
 
 let myColor = null;
 let myRoomId = null;
