@@ -595,21 +595,33 @@ button.danger:active {
   filter: brightness(0.9);
 }
 
-/* Riga dei pulsanti menu (solo icona): sta da sola in cima, sopra tutto
-   il resto — prima stava affiancata a stanza/nome/squadra nella stessa
-   riga (.top-bar), ora quella riga è stata spostata subito sopra il
-   tabellone (vedi .identity-row) e qui restano solo i pulsanti. */
+/* Riga in cima: nome stanza a sinistra, pulsanti menu (solo icona) a
+   destra, sulla stessa riga — prima la stanza stava nella riga
+   identità (nome+squadra) più sotto, ora invece ci sta chi sei (vedi
+   .identity-row), qui resta solo il codice stanza. */
 .top-actions-row {
   display: flex;
-  justify-content: flex-end;
-  gap: 6px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
   margin-bottom: 10px;
 }
-/* Stanza + chi sei + squadra, tutto su un'unica riga subito sopra il
-   tabellone (prima erano due righe separate in cima alla pagina, sopra i
-   pulsanti menu). flex-wrap invece di ellipsis/troncamento: con un nome
-   lungo o uno schermo stretto va a capo, ma il testo resta sempre
-   leggibile per intero. */
+.top-actions-room {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--muted-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.top-actions-icons { display: flex; gap: 6px; flex-shrink: 0; }
+/* Chi sei + squadra, tra il menu e il tabellone (prima erano insieme al
+   nome stanza nella stessa riga). flex-wrap invece di ellipsis/
+   troncamento: con un nome lungo o uno schermo stretto va a capo, ma il
+   testo resta sempre leggibile per intero. */
 .identity-row {
   display: flex;
   align-items: center;
@@ -618,13 +630,6 @@ button.danger:active {
   font-size: 0.82rem;
   font-weight: 700;
   margin-bottom: 10px;
-}
-.identity-room {
-  font-size: 0.68rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
-  color: var(--muted-3);
 }
 .identity-sep { color: var(--muted-3); font-weight: 400; }
 .identity-team {
@@ -4431,7 +4436,7 @@ function renderPawns(svg, board, pawns, lastSwap, lastCapture, lastHomeEntry) {
 // Bumped by hand each time a new build is produced — shown in the lobby so
 // it's obvious at a glance whether you're on the latest version, instead
 // of guessing from a stale browser tab or cache.
-const APP_VERSION = "v4.31";
+const APP_VERSION = "v4.32";
 
 let myColor = null;
 let myRoomId = null;
@@ -6050,75 +6055,78 @@ function renderGameShell() {
       el(
         "div",
         { class: "top-actions-row" },
-        el(
-          "button",
-          { id: "sound-toggle-btn", class: "icon-btn" + (soundMuted ? " icon-btn-muted" : ""), "aria-label": soundMuted ? "Riattiva audio" : "Disattiva audio", onclick: toggleSoundMuted },
-          soundIconSvg(soundMuted)
-        ),
-        el(
-          "button",
-          { class: "icon-btn", "aria-label": "Invita amici", onclick: () => shareInviteLink(myRoomId) },
-          svgIcon(14, 14, "0 0 24 24", "#5A5145", 2.2, [
-            ["circle", { cx: 18, cy: 5, r: 3 }],
-            ["circle", { cx: 6, cy: 12, r: 3 }],
-            ["circle", { cx: 18, cy: 19, r: 3 }],
-            ["line", { x1: 8.6, y1: 10.6, x2: 15.4, y2: 6.4 }],
-            ["line", { x1: 8.6, y1: 13.4, x2: 15.4, y2: 17.6 }],
-          ])
-        ),
-        el(
-          "button",
-          { class: "icon-btn", "aria-label": "Registro mosse", onclick: openLogPicker },
-          svgIcon(14, 14, "0 0 24 24", "#5A5145", 2.2, [
-            ["line", { x1: 8, y1: 6, x2: 21, y2: 6 }],
-            ["line", { x1: 8, y1: 12, x2: 21, y2: 12 }],
-            ["line", { x1: 8, y1: 18, x2: 21, y2: 18 }],
-            ["line", { x1: 3, y1: 6, x2: 3.01, y2: 6 }],
-            ["line", { x1: 3, y1: 12, x2: 3.01, y2: 12 }],
-            ["line", { x1: 3, y1: 18, x2: 3.01, y2: 18 }],
-          ])
-        ),
+        el("div", { class: "top-actions-room" }, "Stanza " + myRoomId),
         el(
           "div",
-          { class: "icon-btn-pair" },
+          { class: "top-actions-icons" },
           el(
             "button",
-            { class: "icon-btn-half", "aria-label": "Mossa precedente", onclick: () => stepReplay(-1) },
-            svgIcon(13, 13, "0 0 24 24", "#5A5145", 2.4, [["polyline", { points: "15 18 9 12 15 6" }]])
+            { id: "sound-toggle-btn", class: "icon-btn" + (soundMuted ? " icon-btn-muted" : ""), "aria-label": soundMuted ? "Riattiva audio" : "Disattiva audio", onclick: toggleSoundMuted },
+            soundIconSvg(soundMuted)
           ),
           el(
             "button",
-            { class: "icon-btn-half", "aria-label": "Mossa successiva", onclick: () => stepReplay(1) },
-            svgIcon(13, 13, "0 0 24 24", "#5A5145", 2.4, [["polyline", { points: "9 18 15 12 9 6" }]])
+            { class: "icon-btn", "aria-label": "Invita amici", onclick: () => shareInviteLink(myRoomId) },
+            svgIcon(14, 14, "0 0 24 24", "#5A5145", 2.2, [
+              ["circle", { cx: 18, cy: 5, r: 3 }],
+              ["circle", { cx: 6, cy: 12, r: 3 }],
+              ["circle", { cx: 18, cy: 19, r: 3 }],
+              ["line", { x1: 8.6, y1: 10.6, x2: 15.4, y2: 6.4 }],
+              ["line", { x1: 8.6, y1: 13.4, x2: 15.4, y2: 17.6 }],
+            ])
+          ),
+          el(
+            "button",
+            { class: "icon-btn", "aria-label": "Registro mosse", onclick: openLogPicker },
+            svgIcon(14, 14, "0 0 24 24", "#5A5145", 2.2, [
+              ["line", { x1: 8, y1: 6, x2: 21, y2: 6 }],
+              ["line", { x1: 8, y1: 12, x2: 21, y2: 12 }],
+              ["line", { x1: 8, y1: 18, x2: 21, y2: 18 }],
+              ["line", { x1: 3, y1: 6, x2: 3.01, y2: 6 }],
+              ["line", { x1: 3, y1: 12, x2: 3.01, y2: 12 }],
+              ["line", { x1: 3, y1: 18, x2: 3.01, y2: 18 }],
+            ])
+          ),
+          el(
+            "div",
+            { class: "icon-btn-pair" },
+            el(
+              "button",
+              { class: "icon-btn-half", "aria-label": "Mossa precedente", onclick: () => stepReplay(-1) },
+              svgIcon(13, 13, "0 0 24 24", "#5A5145", 2.4, [["polyline", { points: "15 18 9 12 15 6" }]])
+            ),
+            el(
+              "button",
+              { class: "icon-btn-half", "aria-label": "Mossa successiva", onclick: () => stepReplay(1) },
+              svgIcon(13, 13, "0 0 24 24", "#5A5145", 2.4, [["polyline", { points: "9 18 15 12 9 6" }]])
+            )
+          ),
+          el(
+            "button",
+            { class: "icon-btn", "aria-label": "Regole", onclick: openRulesPanel },
+            svgIcon(14, 14, "0 0 24 24", "#5A5145", 2.2, [
+              ["path", { d: "M4 19.5A2.5 2.5 0 0 1 6.5 17H20" }],
+              ["path", { d: "M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" }],
+            ])
+          ),
+          el(
+            "button",
+            { class: "icon-btn", "aria-label": "Torna alla schermata iniziale", onclick: leaveGameToHome },
+            svgIcon(14, 14, "0 0 24 24", "#5A5145", 2.2, [
+              ["path", { d: "M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" }],
+              ["polyline", { points: "9 22 9 12 15 12 15 22" }],
+            ])
           )
-        ),
-        el(
-          "button",
-          { class: "icon-btn", "aria-label": "Regole", onclick: openRulesPanel },
-          svgIcon(14, 14, "0 0 24 24", "#5A5145", 2.2, [
-            ["path", { d: "M4 19.5A2.5 2.5 0 0 1 6.5 17H20" }],
-            ["path", { d: "M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" }],
-          ])
-        ),
-        el(
-          "button",
-          { class: "icon-btn", "aria-label": "Torna alla schermata iniziale", onclick: leaveGameToHome },
-          svgIcon(14, 14, "0 0 24 24", "#5A5145", 2.2, [
-            ["path", { d: "M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" }],
-            ["polyline", { points: "9 22 9 12 15 12 15 22" }],
-          ])
         )
       ),
       el("div", { id: "conn-banner" }),
       el("div", { id: "dealer-draw-wrap" }),
-      // Stanza + chi sei + squadra: un'unica riga, subito sopra il
-      // tabellone (prima stava in cima alla pagina, su due righe, accanto
-      // ai pulsanti menu — richiesto di accorparla e spostarla qui).
+      // Chi sei + squadra: un'unica riga, tra il menu e il tabellone
+      // (prima era insieme al nome stanza nella stessa riga — richiesto di
+      // separarli: stanza accanto al menu, questo qui sotto).
       el(
         "div",
         { class: "identity-row" },
-        el("span", { class: "identity-room" }, "Stanza " + myRoomId),
-        el("span", { class: "identity-sep" }, "·"),
         swatchDot(myColor),
         el("span", { class: "identity-name" }, myName),
         el("span", { class: "identity-sep" }, "·"),
