@@ -4432,7 +4432,7 @@ function renderPawns(svg, board, pawns, lastSwap, lastCapture, lastHomeEntry) {
 // Bumped by hand each time a new build is produced — shown in the lobby so
 // it's obvious at a glance whether you're on the latest version, instead
 // of guessing from a stale browser tab or cache.
-const APP_VERSION = "v4.21";
+const APP_VERSION = "v4.22";
 
 let myColor = null;
 let myRoomId = null;
@@ -5528,6 +5528,14 @@ function onDraftStateChange(state) {
     roomRef(myRoomId).off("value");
     watchRoom(myRoomId, onStateChange);
     renderGameShell();
+    // Non aspetta il prossimo giro del listener Firebase per mostrare la
+    // schermata di gioco vera e propria (mano già distribuita, rivelazione
+    // del mazziere inclusa, vedi dealAndRevealDealer): lo stato lo abbiamo
+    // già qui, quindi lo disegniamo subito — stesso principio "non
+    // dipendere da un secondo giro" già applicato altrove in questa
+    // sessione, invece di fidarsi ciecamente del fatto che il listener
+    // appena riattaccato richiami onStateChange in tempo utile da solo.
+    onStateChange(state);
     return;
   }
 
