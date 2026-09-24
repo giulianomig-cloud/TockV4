@@ -559,6 +559,35 @@ button.primary:disabled {
   box-shadow: none;
 }
 
+/* Anticipazione della home v5 (torneo): per ora solo un'anteprima NON
+   cliccabile di cosa arriverà (elenco tornei + "Organizza un torneo"),
+   così si vede la futura struttura senza che sembri già funzionante —
+   vedi docs/v5-roadmap.md. */
+.home-divider { display: flex; align-items: center; gap: 10px; margin: 18px 0 14px; }
+.home-divider .hd-line { flex: 1; height: 1px; background: var(--panel-border); }
+.home-divider .hd-label { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.section-label-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+.section-label { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted-3); }
+.v5-tag {
+  font-size: 0.62rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em;
+  color: var(--muted-2); background: #EFEAE0; border-radius: 999px; padding: 3px 8px; flex-shrink: 0;
+}
+.tourney-placeholder {
+  box-sizing: border-box; display: flex; align-items: center; justify-content: center;
+  background: transparent; border: 1.5px dashed var(--panel-border); border-radius: 16px;
+  padding: 16px; color: var(--muted); font-size: 0.82rem; font-weight: 600; text-align: center;
+  margin-bottom: 14px;
+}
+.organize-btn-disabled {
+  all: unset; box-sizing: border-box; width: 100%; display: flex; align-items: center;
+  justify-content: center; gap: 8px; background: transparent; border: 1.5px dashed var(--panel-border);
+  border-radius: 16px; padding: 12px 16px; color: var(--muted); cursor: default;
+}
+.organize-btn-disabled .plus-badge {
+  display: inline-flex; align-items: center; justify-content: center; width: 17px; height: 17px;
+  border-radius: 50%; background: var(--muted); color: #FFFFFF; font-size: 0.8rem; font-weight: 800; line-height: 1;
+}
+
 /* Passi numerati 1-2-3 nella lobby: guidano l'occhio nell'ordine giusto
    (nome → colore → entra) invece di lasciare i tre blocchi alla stessa
    altezza visiva. */
@@ -4483,7 +4512,7 @@ function renderPawns(svg, board, pawns, lastSwap, lastCapture, lastHomeEntry) {
 // Bumped by hand each time a new build is produced — shown in the lobby so
 // it's obvious at a glance whether you're on the latest version, instead
 // of guessing from a stale browser tab or cache.
-const APP_VERSION = "v4.40";
+const APP_VERSION = "v4.41";
 
 let myColor = null;
 let myRoomId = null;
@@ -4607,6 +4636,26 @@ function renderLobby() {
       el("p", { class: "muted" }, "Inserisci il codice stanza per creare o entrare in una partita."),
       roomInput,
       el("button", { id: "continue-btn", class: "primary", onclick: continueFromRoomCode }, "Continua"),
+      el(
+        "div",
+        { class: "home-divider" },
+        el("span", { class: "hd-line" }),
+        el("span", { class: "hd-label" }, "oppure"),
+        el("span", { class: "hd-line" })
+      ),
+      el(
+        "div",
+        { class: "section-label-row" },
+        el("span", { class: "section-label" }, "Tornei attivi"),
+        el("span", { class: "v5-tag" }, "v5 · in arrivo")
+      ),
+      el("div", { class: "tourney-placeholder" }, "Presto potrai vedere qui i tornei aperti e iscriverti direttamente."),
+      el(
+        "div",
+        { class: "organize-btn-disabled" },
+        el("span", { class: "plus-badge" }, "+"),
+        el("span", {}, "Organizza un torneo — in arrivo")
+      ),
       el(
         "div",
         { class: "sound-test-row" },
