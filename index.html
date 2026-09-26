@@ -626,7 +626,7 @@ button.primary:disabled {
   margin: 14px 0 6px;
   font-size: 0.82rem;
   font-weight: 600;
-  color: #5A5145;
+  color: var(--muted-3);
 }
 .step-num {
   display: inline-flex;
@@ -879,7 +879,7 @@ button.danger:active {
      due colonne laterali (.last-card-info e .last-card-spacer) sono
      elastiche e uguali: questo centra davvero la carta nel riquadro,
      non solo il gruppo swatch+testo+carta preso nel suo insieme. */
-  padding: 12px 14px;
+  padding: 8px 14px;
   margin: 14px 0 10px;
   font-size: 0.78rem; color: var(--ink);
   background: var(--panel);
@@ -891,10 +891,31 @@ button.danger:active {
   gap: 9px; min-width: 0;
 }
 .last-card-spacer { min-width: 0; }
-.last-card-text { flex-shrink: 0; }
+/* Con un nome giocatore lungo, prima "flex-shrink: 0" lo teneva a
+   larghezza piena e il testo finiva per uscire dal riquadro (a sinistra,
+   dato che .last-card-info è ancorato a destra) invece di restare dentro.
+   Va bene anche un nome "normale" + "ha bruciato/giocato:" (es. "Beatrice
+   ha bruciato:") appena più largo della metà del riquadro: qui va su due
+   righe invece di troncare con i puntini, per non perdere l'informazione. */
+.last-card-text {
+  flex-shrink: 1; min-width: 0;
+  overflow-wrap: break-word;
+  text-align: right;
+}
+/* flex-shrink:0 sul pallino colorato: dentro .last-card-info, quando il
+   nome è lungo e lo spazio scarseggia, senza questo il pallino si
+   restringeva SOLO in larghezza (l'altezza fissa 14px no) diventando
+   un ovale schiacciato invece di un cerchio (segnalato: "il punto risulta
+   deformato"). */
+.last-card-info .swatch { flex-shrink: 0; }
 .mini-card {
   position: relative;
-  width: 32px; height: 43px; flex-shrink: 0;
+  /* Rimpicciolita (era 32x43): con il riquadro reso omogeneo al resto
+     della pila (stesso padding/raggio di .turn-line) una carta così
+     grande lo faceva risultare molto più alto degli altri elementi
+     impilati (segnalato: "è più grande degli altri"). Resta comunque
+     un po' più leggibile dell'originale 24x32. */
+  width: 27px; height: 36px; flex-shrink: 0;
   border-radius: 5px;
   border: 1px solid #A79A82;
   background: linear-gradient(180deg, #fffefb, #f4ecd8);
@@ -904,16 +925,16 @@ button.danger:active {
 .mini-card.suit-red { color: #B03040; }
 .mini-card.suit-black { color: #241C15; }
 .mini-card-rank {
-  position: absolute; top: 2px; left: 3px;
-  font-size: 0.68rem; font-weight: 800; line-height: 1;
+  position: absolute; top: 2px; left: 2px;
+  font-size: 0.58rem; font-weight: 800; line-height: 1;
 }
 .mini-card.mini-card-burned {
   filter: grayscale(0.7);
   opacity: 0.75;
 }
 .mini-card-burn-badge {
-  position: absolute; bottom: -5px; right: -5px;
-  font-size: 0.7rem;
+  position: absolute; bottom: -4px; right: -4px;
+  font-size: 0.6rem;
 }
 
 /* Nomi giocatori + pedine "fuori" agli angoli sopra/sotto il tabellone
@@ -1220,11 +1241,15 @@ button.secondary.selected {
   margin-bottom: 10px;
 }
 .seven-row.has-steps { background: #FBF1D8; border-color: var(--gold); }
-.seven-row-text { flex-grow: 1; font-size: 0.84rem; font-weight: 700; color: #5A5145; }
+/* Erano colorati con "#5A5145" fisso invece del token --muted-3: identico
+   in chiaro, ma su sfondo scuro (var(--cream)/var(--panel) invertiti dal
+   tema) restava un marrone scuro su fondo quasi nero, quasi illeggibile —
+   testo e simboli -/+ (segnalato: "i menu non si leggono"). */
+.seven-row-text { flex-grow: 1; font-size: 0.84rem; font-weight: 700; color: var(--muted-3); }
 .seven-step-btn {
   width: 44px; height: 44px; border-radius: 50%;
   border: 1.5px solid var(--panel-border); background: var(--cream);
-  font-size: 1.15rem; font-weight: 800; color: #5A5145; cursor: pointer;
+  font-size: 1.15rem; font-weight: 800; color: var(--muted-3); cursor: pointer;
   flex-shrink: 0;
 }
 .seven-row.has-steps .seven-step-btn { background: var(--panel); }
@@ -1245,7 +1270,7 @@ button.secondary.selected {
   font-weight: 800; font-size: 0.86rem;
 }
 .rule-title { font-size: 0.84rem; font-weight: 800; margin-bottom: 2px; color: var(--ink); }
-.rule-body { font-size: 0.75rem; font-weight: 600; color: #6B6152; line-height: 1.5; }
+.rule-body { font-size: 0.75rem; font-weight: 600; color: var(--muted-3); line-height: 1.5; }
 
 /* Picker del Jack: barra di avanzamento a 2 slot (pedina scelta / da
    scegliere) sopra la griglia di "chip" cliccabili — come nel mockup
@@ -1270,7 +1295,7 @@ button.secondary.selected {
 }
 .jack-chip:hover { border-color: var(--gold); }
 .pawn-choice-chips { grid-template-columns: 1fr; margin-bottom: 14px; }
-.jack-chip span { font-size: 0.72rem; font-weight: 700; color: #5A5145; line-height: 1.3; }
+.jack-chip span { font-size: 0.72rem; font-weight: 700; color: var(--muted-3); line-height: 1.3; }
 
 .teams-hint {
   margin-top: -6px;
@@ -1576,8 +1601,25 @@ button.secondary.selected {
 :root[data-theme="dark"] .chat-bubble-name-yellow { color: #E8C468; }
 :root[data-theme="dark"] .exchange-pill.done { background: #22352A; }
 :root[data-theme="dark"] .exchange-pill.waiting { background: #362C18; }
-/* Il tasto "Aggiungi a Home" (a2hs) e lo sfondo del tabellone/carte restano
-   volutamente sul loro colore caldo fisso — vedi nota sopra. */
+/* Il tasto "Aggiungi a Home" (a2hs) e le carte (mini-card/card-btn)
+   restano volutamente sul loro colore caldo fisso — vedi nota sopra —
+   ma il tabellone stesso ora ha una sua resa scura (cornice + legno
+   dell'SVG), vedi subito sotto: su richiesta esplicita, a differenza
+   della scelta iniziale di lasciarlo fisso. */
+:root[data-theme="dark"] #board-wrap {
+  background: linear-gradient(160deg, #2A2015, #1E170F);
+  border-color: #3A2D1C;
+  box-shadow: inset 0 2px 10px rgba(0,0,0,0.35), 0 10px 26px -14px rgba(0,0,0,0.5);
+}
+/* L'SVG del tabellone è disegnato una volta sola in JS con colori "legno"
+   fissi (vedi buildBoardSVG) — invece di rigenerare tutti i gradienti per
+   il tema scuro, un velo scuro semi-trasparente ci si sovrappone (sopra
+   celle/linee/basi, ma SOTTO le pedine — che sono aggiunte allo <svg>
+   DOPO questo rect, quindi restano sempre vivide e ben leggibili anche
+   di notte). Opacità 0 in chiaro, visibile solo in scuro. */
+:root[data-theme="dark"] #board-svg { border-color: #1C140C !important; }
+.board-night-overlay { opacity: 0; pointer-events: none; transition: opacity 0.2s ease; }
+:root[data-theme="dark"] .board-night-overlay { opacity: 0.55; }
 
 /* Interruttore tema (☀/🌙): un pulsante tondo come .icon-btn, messo nella
    home (accanto a "Test suono") e nella barra icone in partita — non un
@@ -3917,6 +3959,15 @@ function buildBoardSVG(containerEl, board) {
     });
   }
 
+  // Velo notturno per il tema scuro (vedi .board-night-overlay in CSS):
+  // trasparente in chiaro, scurisce legno/celle/linee in scuro. Aggiunto
+  // qui, DOPO celle/basi/case ma PRIMA che renderPawns() cominci ad
+  // appendere le pedine allo stesso <svg> — così le pedine restano sempre
+  // sopra il velo, mai scurite anche loro.
+  svg.appendChild(ns_el("rect", {
+    x: 0, y: 0, width: S, height: S, fill: "#0A0603", class: "board-night-overlay",
+  }));
+
   containerEl.innerHTML = "";
   containerEl.appendChild(svg);
   resetPawnAnimState();
@@ -4688,7 +4739,7 @@ function renderPawns(svg, board, pawns, lastSwap, lastCapture, lastHomeEntry) {
 // Bumped by hand each time a new build is produced — shown in the lobby so
 // it's obvious at a glance whether you're on the latest version, instead
 // of guessing from a stale browser tab or cache.
-const APP_VERSION = "v4.52";
+const APP_VERSION = "v4.58";
 
 let myColor = null;
 let myRoomId = null;
@@ -4800,7 +4851,7 @@ function renderLobby() {
       "div",
       { class: "lobby-card" },
       el("div", { class: "app-logo" },
-        el("img", { class: "app-logo-img", src: "./logo.png", alt: "Tock" })
+        el("img", { class: "app-logo-img", src: logoSrc(currentTheme), alt: "Tock" })
       ),
       el("p", { class: "muted" }, "Inserisci il codice stanza per creare o entrare in una partita."),
       roomInput,
@@ -5116,7 +5167,7 @@ function renderManualLobby(roomId, existingPlayers) {
         el(
           "div",
           { class: "app-logo" },
-          el("img", { class: "app-logo-img", src: "./logo.png", alt: "Tock" })
+          el("img", { class: "app-logo-img", src: logoSrc(currentTheme), alt: "Tock" })
         ),
         el(
           "button",
@@ -6548,6 +6599,19 @@ function watchConnection() {
 // color-scheme) che invece vanno bene solo come JS, non si possono mettere
 // in un <link>/<meta> statico dato che dipendono dalla preferenza salvata.
 let currentTheme = document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
+// Il logo (logo.png) ha la scritta "TOCK" in un marrone scurissimo, quasi
+// nero: perfettamente leggibile sul fondo chiaro ma praticamente invisibile
+// su quello scuro. logo-dark.png è la stessa immagine con solo la scritta
+// ricolorata in crema chiaro (pallini colorati e riga gialla invariati) —
+// qui si sceglie quale servire in base al tema.
+function logoSrc(theme) {
+  return theme === "dark" ? "./logo-dark.png" : "./logo.png";
+}
+function updateLogoImages() {
+  document.querySelectorAll(".app-logo-img").forEach((img) => {
+    img.src = logoSrc(currentTheme);
+  });
+}
 function applyTheme(theme) {
   currentTheme = theme;
   document.documentElement.setAttribute("data-theme", theme);
@@ -6557,6 +6621,7 @@ function applyTheme(theme) {
   const metaThemeColor = document.querySelector('meta[name="theme-color"]');
   if (metaThemeColor) metaThemeColor.setAttribute("content", theme === "dark" ? "#171310" : "#FBF5E9");
   updateThemeToggleBtn();
+  updateLogoImages();
 }
 function toggleTheme() {
   applyTheme(currentTheme === "dark" ? "light" : "dark");
@@ -8062,7 +8127,15 @@ function renderPlayerStatus(state) {
 
   const buildPlayer = (c, isRightSide) => {
     const isTurn = state.phase === "playing" && state.turnColor === c;
-    const isDealer = state.dealerColor === c;
+    // Mentre state.dealerDraw è presente, l'estrazione del mazziere (Asso di
+    // Cuori) sta ancora animandosi in sovraimpressione (vedi
+    // renderDealerDrawScreen): dealerColor è già stato deciso e scritto nel
+    // database nello stesso istante (dealAndRevealDealer), quindi senza
+    // questo controllo il distintivo comparirebbe subito sul tabellone
+    // sotto al foglio, rivelando chi ha vinto PRIMA che l'animazione lo
+    // sveli (segnalato: "spoiler"). Torna a comparire non appena
+    // state.dealerDraw viene ripulito, cioè a rivelazione conclusa.
+    const isDealer = state.dealerColor === c && !state.dealerDraw;
     const isBotSeat = state.players[c] && state.players[c].isBot;
     // presenceState[c] è un oggetto { connId: true, ... } — una chiave per
     // ogni connessione viva di quel colore (vedi setupOwnPresence), non un
@@ -8247,7 +8320,7 @@ function renderTurnIndicator(state) {
 function miniCardVisual(card, burned) {
   const [r, s] = card.split("-");
   const isRed = !!RED_SUITS[s];
-  const icon = suitIconSvg(s, 17);
+  const icon = suitIconSvg(s, 14);
   icon.style.position = "absolute";
   icon.style.left = "50%";
   icon.style.top = "58%";
@@ -9121,9 +9194,18 @@ function renderSevenSplitter(active, card, ownPawns) {
   if (ownTotal > 0 && ownTotal < 7) {
     const ownResult = sevenValidateOwnPortions(currentState, active, ownDist);
     if (ownResult && ownResult.allHome) {
+      // Esclude anche una pedina del compagno già arrivata nell'ULTIMA
+      // casella di casa (non c'è una 5ª casella dopo, pathForward
+      // restituisce sempre null): senza questo filtro compariva comunque
+      // come riga selezionabile nel foglio, pur non potendo mai ricevere
+      // davvero un passo — confuso ("perché mi dice di muoverla se è già
+      // in casa?", segnalato). Le pedine nelle altre 3 caselle di casa
+      // restano proponibili: possono ancora avanzare (vedi "casa#2 →
+      // casa#4" nel registro mosse).
+      const lastHomeIdx = BOARD.homePaths[partner].length - 1;
       partnerPawns = currentState.pawns[partner]
         .map((p, i) => ({ pawnIndex: i, pos: p, color: partner }))
-        .filter((x) => x.pos !== -1);
+        .filter((x) => x.pos !== -1 && x.pos !== 1000 + lastHomeIdx);
     }
   }
   // Ripulisce eventuali passi lasciati sul compagno da un'allocazione
