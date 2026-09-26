@@ -11,6 +11,17 @@
      modalità chiara (sfondo scurito, colori desaturati) — dichiarando che
      la pagina è progettata SOLO per light si evita che il browser tenti
      di "aiutare" scurendola da solo. --><meta name="color-scheme" content="light only" />
+<!-- Applica subito (prima ancora che <body> venga disegnato) il tema
+     scelto in precedenza, se scuro — così non si vede un lampo chiaro
+     all'apertura prima che il resto del JS (in fondo al file) giri.
+     Vedi applyTheme/initTheme più sotto per i dettagli. -->
+<script>
+try {
+  if (localStorage.getItem("tock-theme") === "dark") {
+    document.documentElement.setAttribute("data-theme", "dark");
+  }
+} catch (e) {}
+</script>
 <link rel="apple-touch-icon" href="icon-192.png" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -71,6 +82,12 @@
   --muted: #A79A82;
   --muted-2: #8A7F6E;
   --muted-3: #5A5145;
+  /* Testo/icone sopra sfondi dorati fissi (bottoni .primary, toast,
+     banner) — NON cambia col tema (l'oro resta lo stesso in chiaro e
+     scuro), a differenza di --ink che invece si inverte in dark mode.
+     Tenerli separati evita che un bottone dorato finisca con testo
+     chiarissimo su oro (illeggibile) quando si passa al tema scuro. */
+  --ink-on-gold: #241C15;
   --red: #D9636B;
   --green: #3FA77E;
   --yellow: #E3AC33;
@@ -86,15 +103,16 @@
 * { box-sizing: border-box; }
 
 html {
-  background: #FBF5E9;
+  background: var(--cream);
   color-scheme: light only;
 }
+html[data-theme="dark"] { color-scheme: dark only; }
 
 body {
   margin: 0;
   min-height: 100%;
   font-family: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  background: #FBF5E9;
+  background: var(--cream);
   color: var(--ink);
 }
 
@@ -131,7 +149,7 @@ h1 { font-size: 1.4rem; margin: 0 0 4px; color: var(--ink); }
    card bianca a sé per l'intestazione/stato, diversa dalla sala d'attesa
    — non riusa .start-card (ormai trasparente) ma una classe propria. */
 .exchange-card {
-  background: #FFFFFF;
+  background: var(--panel);
   border: 1px solid var(--panel-border);
   border-radius: 18px;
   padding: 18px;
@@ -190,7 +208,7 @@ h1 { font-size: 1.4rem; margin: 0 0 4px; color: var(--ink); }
   display: inline-flex;
   align-items: baseline;
   gap: 8px;
-  background: #FFFFFF;
+  background: var(--panel);
   border: 1px solid var(--panel-border);
   border-radius: 12px;
   padding: 10px 14px;
@@ -214,7 +232,7 @@ h1 { font-size: 1.4rem; margin: 0 0 4px; color: var(--ink); }
   border: 1.5px solid var(--panel-border);
   border-radius: 14px;
   margin: 8px 0;
-  background: #FFFFFF;
+  background: var(--panel);
   color: var(--ink);
 }
 #room-input:focus, #name-input:focus { outline: 2px solid var(--gold); outline-offset: 1px; }
@@ -282,7 +300,7 @@ h1 { font-size: 1.4rem; margin: 0 0 4px; color: var(--ink); }
   flex-direction: column;
   border-radius: 16px;
   padding: 13px;
-  background: #FFFFFF;
+  background: var(--panel);
   border: 1.5px solid var(--panel-border);
   position: relative;
   z-index: 1; /* sopra il filo .team-thread, che deve restare dietro */
@@ -392,13 +410,13 @@ h1 { font-size: 1.4rem; margin: 0 0 4px; color: var(--ink); }
   padding: 7px 6px;
   border-radius: 999px;
   border: 1px solid var(--panel-border);
-  background: #FFFFFF;
+  background: var(--panel);
   color: var(--muted-3);
   cursor: pointer;
 }
 .bot-btn:hover { background: var(--cream); }
 .bot-btn:active { transform: translateY(1px); }
-.bot-btn-remove { color: #A5424A; border-color: #e0b3a8; background: #FFFFFF; }
+.bot-btn-remove { color: #A5424A; border-color: #e0b3a8; background: var(--panel); }
 /* Due pulsanti affiancati (Normale/Difficile) al posto di uno solo, quando
    il posto va assegnato al computer — vedi botCell/renderStartControls. */
 .bot-btn-row { display: flex; flex-direction: column; gap: 6px; }
@@ -419,7 +437,7 @@ h1 { font-size: 1.4rem; margin: 0 0 4px; color: var(--ink); }
   padding: 16px 16px;
   border-radius: 16px;
   border: 1.5px solid var(--panel-border);
-  background: #FFFFFF;
+  background: var(--panel);
   cursor: pointer;
   text-align: left;
   transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.08s ease;
@@ -433,7 +451,7 @@ h1 { font-size: 1.4rem; margin: 0 0 4px; color: var(--ink); }
 .waiting-list { list-style: none; padding: 0; margin: 10px 0; }
 .waiting-list li {
   display: flex; align-items: center; gap: 8px; padding: 10px 12px;
-  background: #FFFFFF; border: 1.5px solid var(--panel-border);
+  background: var(--panel); border: 1.5px solid var(--panel-border);
   border-radius: 12px; margin-bottom: 6px; font-size: 0.88rem; font-weight: 700;
   color: var(--ink);
 }
@@ -447,7 +465,7 @@ h1 { font-size: 1.4rem; margin: 0 0 4px; color: var(--ink); }
 .player-slot {
   padding: 11px 6px; border-radius: 12px; font-weight: 800; text-align: center;
   min-height: 18px; display: flex; align-items: center; justify-content: center;
-  font-size: 0.87rem; background: #FFFFFF; border: 1.5px solid var(--panel-border); color: var(--ink);
+  font-size: 0.87rem; background: var(--panel); border: 1.5px solid var(--panel-border); color: var(--ink);
 }
 .player-slot.spinning { animation: slotShake 0.12s linear infinite; }
 @keyframes slotShake { 0% { transform: translateX(-1px); } 50% { transform: translateX(1px); } 100% { transform: translateX(-1px); } }
@@ -529,7 +547,7 @@ button.primary {
   font-size: 1rem;
   font-weight: 800;
   background: var(--gold);
-  color: var(--ink);
+  color: var(--ink-on-gold);
   border: none;
   border-radius: 16px;
   cursor: pointer;
@@ -627,7 +645,7 @@ button.secondary {
   padding: 10px 14px;
   border-radius: 8px;
   border: 2px solid var(--ink);
-  background: #FFFFFF;
+  background: var(--panel);
   margin: 4px;
   cursor: pointer;
   transition: transform 0.08s ease, box-shadow 0.08s ease, filter 0.08s ease;
@@ -692,7 +710,7 @@ button.danger:active {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.top-actions-icons { display: flex; gap: 6px; flex-shrink: 0; }
+.top-actions-icons { display: flex; gap: 4px; flex-shrink: 0; }
 /* Chi sei + squadra, tra il menu e il tabellone (prima erano insieme al
    nome stanza nella stessa riga). flex-wrap invece di ellipsis/
    troncamento: con un nome lungo o uno schermo stretto va a capo, ma il
@@ -725,10 +743,10 @@ button.danger:active {
 .identity-row .swatch { flex-shrink: 0; }
 .identity-row .swatch + .swatch { margin-left: -4px; }
 .icon-btn {
-  width: 34px;
-  height: 34px;
+  width: 31px;
+  height: 31px;
   border-radius: 50%;
-  background: #FFFFFF;
+  background: var(--panel);
   border: 1px solid var(--panel-border);
   display: flex;
   align-items: center;
@@ -743,11 +761,13 @@ button.danger:active {
 /* Coppia di frecce "mossa precedente/successiva" per rivedere più di una
    mossa indietro (vedi stepReplay) — un'unica capsula invece di due cerchi
    separati, così occupa meno posto nella barra in alto già affollata di
-   icone, pur restando due bottoni distinti e ben separati al tocco. */
+   icone (con l'aggiunta del tema chiaro/scuro sono diventate 7 — misure
+   ridotte un po' apposta, vedi .theme-toggle-btn), pur restando due
+   bottoni distinti e ben separati al tocco. */
 .icon-btn-pair {
-  height: 34px;
-  border-radius: 17px;
-  background: #FFFFFF;
+  height: 31px;
+  border-radius: 16px;
+  background: var(--panel);
   border: 1px solid var(--panel-border);
   display: flex;
   align-items: stretch;
@@ -755,7 +775,7 @@ button.danger:active {
   overflow: hidden;
 }
 .icon-btn-half {
-  width: 30px;
+  width: 27px;
   border: none;
   background: transparent;
   display: flex;
@@ -767,6 +787,13 @@ button.danger:active {
 }
 .icon-btn-half:hover { background: #F3EBD8; }
 .icon-btn-half:first-child { border-right: 1px solid var(--panel-border); }
+/* Le iconcine dentro .icon-btn/.icon-btn-half sono SVG creati con un
+   colore fisso ("#5A5145") passato a svgIcon — una regola CSS sullo
+   stroke vince comunque sull'attributo di presentazione, quindi basta
+   questa per farle seguire il tema (in chiaro coincide col colore
+   fisso di prima, in scuro diventa leggibile sul pannello scuro) senza
+   dover toccare tutte le chiamate a svgIcon() sparse nel file. */
+.icon-btn svg, .icon-btn-half svg { stroke: var(--muted-3); }
 .sound-test-btn {
   display: inline-flex;
   align-items: center;
@@ -777,7 +804,7 @@ button.danger:active {
   font-weight: 700;
   border-radius: 999px;
   border: 1px solid var(--panel-border);
-  background: #FFFFFF;
+  background: var(--panel);
   color: var(--ink);
   cursor: pointer;
   transition: border-color .12s ease, background .12s ease;
@@ -798,7 +825,7 @@ button.danger:active {
   align-items: center;
   gap: 8px;
   padding: 12px 14px;
-  background: #FFFFFF;
+  background: var(--panel);
   border: 1.5px solid var(--panel-border);
   border-radius: 16px;
   margin-bottom: 10px;
@@ -841,19 +868,29 @@ button.danger:active {
 }
 
 .last-card-line {
-  display: flex; align-items: center; justify-content: center; gap: 9px;
-  padding: 7px 12px;
-  /* 10px come tutte le altre "card" impilate qui sotto (turn-line,
-     board-players-row, hand-row, chat-box, #board-wrap) — prima era 8px,
-     unico valore diverso nella pila, distanze non regolari. Centrata
-     (invece che allineata a sinistra) e con la mini-carta più grande, per
-     farla leggere a colpo d'occhio come la giocata dell'avversario. */
-  margin: 0 0 10px;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 9px;
+  /* Stesso padding/raggio/margine di .turn-line, così il riquadro è
+     davvero omogeneo al resto della pila (prima aveva padding e
+     border-radius più piccoli: appariva più basso e "diverso"). La
+     mini-carta sta nella colonna centrale a larghezza fissa, mentre le
+     due colonne laterali (.last-card-info e .last-card-spacer) sono
+     elastiche e uguali: questo centra davvero la carta nel riquadro,
+     non solo il gruppo swatch+testo+carta preso nel suo insieme. */
+  padding: 12px 14px;
+  margin: 14px 0 10px;
   font-size: 0.78rem; color: var(--ink);
   background: var(--panel);
-  border: 1px solid var(--panel-border);
-  border-radius: 10px;
+  border: 1.5px solid var(--panel-border);
+  border-radius: 16px;
 }
+.last-card-info {
+  display: flex; align-items: center; justify-content: flex-end;
+  gap: 9px; min-width: 0;
+}
+.last-card-spacer { min-width: 0; }
 .last-card-text { flex-shrink: 0; }
 .mini-card {
   position: relative;
@@ -892,7 +929,7 @@ button.danger:active {
   min-height: 1px; /* evita un salto di layout quando è vuota (fasi senza stato "playing") */
 }
 #board-players-top { margin-bottom: 6px; }
-#board-players-bottom { margin-top: 6px; }
+#board-players-bottom { margin-top: 10px; }
 /* Nome e pallini sulla stessa riga (l'ordine dei due — pallini poi nome, o
    nome poi pallini — lo decide già il chiamante in renderPlayerStatus a
    seconda del lato, qui c'è solo l'allineamento verticale/orizzontale
@@ -1120,7 +1157,7 @@ button.danger:active {
 .toast-ok-btn {
   flex-shrink: 0;
   background: var(--gold-metallic);
-  color: var(--ink);
+  color: var(--ink-on-gold);
   border: none; border-radius: 999px;
   padding: 9px 20px;
   font-weight: 800; font-size: 0.85rem;
@@ -1137,7 +1174,7 @@ button.danger:active {
   z-index: 600;
   padding: calc(10px + env(safe-area-inset-top)) 14px 10px;
   background: var(--gold-metallic);
-  color: var(--ink);
+  color: var(--ink-on-gold);
   display: flex; align-items: center; gap: 10px;
   box-shadow: 0 4px 14px rgba(36,28,21,0.25);
   animation: versionBannerSlideDown 0.25s ease-out;
@@ -1157,13 +1194,13 @@ button.danger:active {
 .version-banner-dismiss {
   flex-shrink: 0;
   background: transparent; border: none;
-  color: var(--ink); font-size: 1rem; font-weight: 800;
+  color: var(--ink-on-gold); font-size: 1rem; font-weight: 800;
   cursor: pointer; padding: 4px 6px; opacity: 0.7;
 }
 
 button.secondary.selected {
   background: var(--gold-metallic);
-  border-color: var(--ink);
+  border-color: var(--ink-on-gold);
 }
 
 /* Riquadro "picker" del 7: una card per pedina (icona a dado + testo +
@@ -1176,7 +1213,7 @@ button.secondary.selected {
   display: flex;
   align-items: center;
   gap: 12px;
-  background: #FFFFFF;
+  background: var(--panel);
   border: 1.5px solid var(--panel-border);
   border-radius: 14px;
   padding: 10px 12px;
@@ -1190,7 +1227,7 @@ button.secondary.selected {
   font-size: 1.15rem; font-weight: 800; color: #5A5145; cursor: pointer;
   flex-shrink: 0;
 }
-.seven-row.has-steps .seven-step-btn { background: #FFFFFF; }
+.seven-row.has-steps .seven-step-btn { background: var(--panel); }
 .seven-val {
   min-width: 18px;
   text-align: center;
@@ -1221,14 +1258,14 @@ button.secondary.selected {
 }
 .jack-slot.filled { background: #FBF1D8; border: 1.5px solid var(--gold); color: #6B4E12; }
 .jack-slot.empty {
-  background: #FFFFFF; border: 1.5px dashed var(--panel-border); color: var(--muted-3);
+  background: var(--panel); border: 1.5px dashed var(--panel-border); color: var(--muted-3);
   justify-content: center;
 }
 .jack-slot span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .jack-chips { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 18px; }
 .jack-chip {
   display: flex; align-items: center; gap: 9px;
-  background: #FFFFFF; border: 1.5px solid var(--panel-border); border-radius: 14px;
+  background: var(--panel); border: 1.5px solid var(--panel-border); border-radius: 14px;
   padding: 10px; cursor: pointer; text-align: left;
 }
 .jack-chip:hover { border-color: var(--gold); }
@@ -1376,7 +1413,7 @@ button.secondary.selected {
   font-size: 0.85rem;
   font-weight: 600;
   color: var(--ink);
-  background: #FFFFFF;
+  background: var(--panel);
 }
 .chat-send-btn {
   width: 40px; height: 40px; border-radius: 50%;
@@ -1481,9 +1518,88 @@ button.secondary.selected {
   border: none;
   font-size: 1rem;
   cursor: pointer;
-  color: #8A7F6E;
+  color: var(--muted-2);
   flex-shrink: 0;
 }
+
+/* ==========================================================================
+   Tema scuro — attivato mettendo data-theme="dark" su <html> (vedi
+   applyTheme/toggleTheme in fondo al file, pulsante in cima alla home).
+   Non tocca le regole sopra: qui si ridefiniscono solo i token di
+   superficie/testo (che quasi tutto il resto dell'app già usa via var())
+   e si aggiungono override mirati per le poche tinte pastello scritte come
+   colore fisso invece che come var() (stato colore in lobby, bolle chat,
+   exchange pill, bottone "libera posto").
+   Rimangono INVARIATI apposta (fanno parte della fascia "oro/accento
+   caldo", pensata per restare la stessa in entrambi i temi): i bottoni
+   .primary, i pannelli dorati (toast, banner versione), gli hover dorati
+   delle iconcine, le caselle "riempite" di 7/Jack, il tabellone, le
+   pedine e le carte — sono elementi decorativi/di gioco autosufficienti,
+   non superfici di sfondo dell'app. ========================================================================== */
+:root[data-theme="dark"] {
+  --ink: #F1E7D6;
+  --cream: #171310;
+  --panel: #241E17;
+  --panel-border: #47392A;
+  --muted: #8C8170;
+  --muted-2: #AA9F87;
+  --muted-3: #D7CBB1;
+  --team-a-gradient: linear-gradient(120deg, #3A2226 0%, #362C18 100%);
+  --team-b-gradient: linear-gradient(120deg, #22352A 0%, #22303F 100%);
+}
+:root[data-theme="dark"] .color-cell.cc-red.cc-free { border-color: #4A3230; background: #241C1B; }
+:root[data-theme="dark"] .color-cell.cc-green.cc-free { border-color: #33463A; background: #1C2420; }
+:root[data-theme="dark"] .color-cell.cc-yellow.cc-free { border-color: #473B22; background: #241F16; }
+:root[data-theme="dark"] .color-cell.cc-blue.cc-free { border-color: #33495C; background: #1B222A; }
+:root[data-theme="dark"] .color-cell.cc-red.cc-pending { border-color: #7A4348; background: #241C1B; }
+:root[data-theme="dark"] .color-cell.cc-green.cc-pending { border-color: #3F6B52; background: #1C2420; }
+:root[data-theme="dark"] .color-cell.cc-yellow.cc-pending { border-color: #8A6F2E; background: #241F16; }
+:root[data-theme="dark"] .color-cell.cc-blue.cc-pending { border-color: #3F6E93; background: #1B222A; }
+:root[data-theme="dark"] .color-cell.cc-red.cc-taken,
+:root[data-theme="dark"] .color-cell.cc-red.cc-mine { background: #3A2226; border-color: #7A4348; }
+:root[data-theme="dark"] .color-cell.cc-green.cc-taken,
+:root[data-theme="dark"] .color-cell.cc-green.cc-mine { background: #22352A; border-color: #3F6B52; }
+:root[data-theme="dark"] .color-cell.cc-yellow.cc-taken,
+:root[data-theme="dark"] .color-cell.cc-yellow.cc-mine { background: #362C18; border-color: #8A6F2E; }
+:root[data-theme="dark"] .color-cell.cc-blue.cc-taken,
+:root[data-theme="dark"] .color-cell.cc-blue.cc-mine { background: #22303F; border-color: #3F6E93; }
+:root[data-theme="dark"] .cc-red .color-card-sub { color: #E8969B; }
+:root[data-theme="dark"] .cc-green .color-card-sub { color: #7FD1A8; }
+:root[data-theme="dark"] .cc-yellow .color-card-sub { color: #E8C468; }
+:root[data-theme="dark"] .cc-blue .color-card-sub { color: #82BEE8; }
+:root[data-theme="dark"] .bot-btn-remove { color: #E8969B; border-color: #7A4348; }
+:root[data-theme="dark"] .chat-bubble-red { background: #3A2226; color: #E8969B; }
+:root[data-theme="dark"] .chat-bubble-green { background: #22352A; color: #7FD1A8; }
+:root[data-theme="dark"] .chat-bubble-yellow { background: #362C18; color: #E8C468; }
+:root[data-theme="dark"] .chat-bubble-blue { background: #22303F; color: #82BEE8; }
+:root[data-theme="dark"] .chat-bubble-name-green { color: #7FD1A8; }
+:root[data-theme="dark"] .chat-bubble-name-yellow { color: #E8C468; }
+:root[data-theme="dark"] .exchange-pill.done { background: #22352A; }
+:root[data-theme="dark"] .exchange-pill.waiting { background: #362C18; }
+/* Il tasto "Aggiungi a Home" (a2hs) e lo sfondo del tabellone/carte restano
+   volutamente sul loro colore caldo fisso — vedi nota sopra. */
+
+/* Interruttore tema (☀/🌙): un pulsante tondo come .icon-btn, messo nella
+   home (accanto a "Test suono") e nella barra icone in partita — non un
+   overlay fisso in un angolo, che in partita si sarebbe sovrapposto alle
+   iconcine già presenti in cima al tabellone (vedi top-actions-icons). */
+.theme-toggle-btn {
+  width: 31px;
+  height: 31px;
+  border-radius: 50%;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  flex-shrink: 0;
+  padding: 0;
+  transition: background .12s ease, border-color .12s ease;
+}
+.theme-toggle-btn:hover { border-color: var(--gold); }
 
 </style>
 </head>
@@ -4572,7 +4688,7 @@ function renderPawns(svg, board, pawns, lastSwap, lastCapture, lastHomeEntry) {
 // Bumped by hand each time a new build is produced — shown in the lobby so
 // it's obvious at a glance whether you're on the latest version, instead
 // of guessing from a stale browser tab or cache.
-const APP_VERSION = "v4.50";
+const APP_VERSION = "v4.52";
 
 let myColor = null;
 let myRoomId = null;
@@ -4712,7 +4828,12 @@ function renderLobby() {
       el(
         "div",
         { class: "sound-test-row" },
-        el("button", { class: "sound-test-btn", onclick: testSound }, "🔊 Test suono"),
+        el(
+          "div",
+          { style: "display:flex; align-items:center; gap:8px;" },
+          el("button", { class: "sound-test-btn", onclick: testSound }, "🔊 Test suono"),
+          themeToggleButton()
+        ),
         el("span", { class: "app-meta" }, `Tock by Mig · ${APP_VERSION} · © 2026 Mig`)
       ),
       homeScreenHint()
@@ -6303,6 +6424,7 @@ function renderGameShell() {
         el(
           "div",
           { class: "top-actions-icons" },
+          themeToggleButton(),
           el(
             "button",
             { id: "sound-toggle-btn", class: "icon-btn" + (soundMuted ? " icon-btn-muted" : ""), "aria-label": soundMuted ? "Riattiva audio" : "Disattiva audio", onclick: toggleSoundMuted },
@@ -6416,6 +6538,45 @@ function watchConnection() {
     // some reason, just skip the indicator rather than breaking the app
     console.error(e);
   }
+}
+
+// ---------------- Tema chiaro/scuro ----------------
+// Il tema scelto in precedenza viene già applicato PRIMA che questo script
+// giri (vedi lo <script> inline in <head>, appena dopo il meta
+// color-scheme) per evitare un lampo chiaro all'apertura — qui si tiene
+// solo la variabile allineata e si aggiornano i meta tag (theme-color,
+// color-scheme) che invece vanno bene solo come JS, non si possono mettere
+// in un <link>/<meta> statico dato che dipendono dalla preferenza salvata.
+let currentTheme = document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
+function applyTheme(theme) {
+  currentTheme = theme;
+  document.documentElement.setAttribute("data-theme", theme);
+  try { localStorage.setItem("tock-theme", theme); } catch (e) {}
+  const metaColorScheme = document.querySelector('meta[name="color-scheme"]');
+  if (metaColorScheme) metaColorScheme.setAttribute("content", theme === "dark" ? "dark only" : "light only");
+  const metaThemeColor = document.querySelector('meta[name="theme-color"]');
+  if (metaThemeColor) metaThemeColor.setAttribute("content", theme === "dark" ? "#171310" : "#FBF5E9");
+  updateThemeToggleBtn();
+}
+function toggleTheme() {
+  applyTheme(currentTheme === "dark" ? "light" : "dark");
+}
+function updateThemeToggleBtn() {
+  const btn = document.getElementById("theme-toggle-btn");
+  if (!btn) return;
+  btn.textContent = currentTheme === "dark" ? "☀️" : "🌙";
+  btn.setAttribute("aria-label", currentTheme === "dark" ? "Passa al tema chiaro" : "Passa al tema scuro");
+}
+// Fabbrica del pulsante, usata direttamente dentro l'albero di renderLobby
+// (in home) e renderGameShell (in partita) — non un overlay fisso globale:
+// ridisegnato da zero ad ogni cambio schermata come tutto il resto di
+// #app, quindi non serve installarlo una volta sola all'avvio.
+function themeToggleButton() {
+  return el(
+    "button",
+    { id: "theme-toggle-btn", class: "theme-toggle-btn", onclick: toggleTheme },
+    currentTheme === "dark" ? "☀️" : "🌙"
+  );
 }
 
 // ---------------- Sounds ----------------
@@ -8068,10 +8229,15 @@ function renderTurnIndicator(state) {
       el(
         "div",
         { class: "last-card-line" },
-        el("span", { class: "swatch swatch-" + color }),
-        el("span", { class: "last-card-text" },
-          `${playerName(state, color)} ha ${burned ? "bruciato" : "giocato"}:`),
-        miniCardVisual(card, burned)
+        el(
+          "span",
+          { class: "last-card-info" },
+          el("span", { class: "swatch swatch-" + color }),
+          el("span", { class: "last-card-text" },
+            `${playerName(state, color)} ha ${burned ? "bruciato" : "giocato"}:`)
+        ),
+        miniCardVisual(card, burned),
+        el("span", { class: "last-card-spacer" })
       )
     );
   }
@@ -9549,6 +9715,12 @@ function launchConfetti(winnerColors) {
 
 window.addEventListener("DOMContentLoaded", () => {
   installDebugPanel();
+  // Il data-theme può già essere "dark" (impostato dallo script inline in
+  // <head> prima ancora di questo boot) — qui si aggiornano solo i meta
+  // tag (color-scheme/theme-color) di conseguenza, senza toccare
+  // l'attributo già corretto. Il pulsante vero e proprio lo disegna ogni
+  // schermata (vedi themeToggleButton), non serve installarlo qui.
+  applyTheme(currentTheme);
   initFirebase();
   renderLobby();
   applyInviteLinkIfPresent();
