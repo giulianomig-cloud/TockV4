@@ -75,6 +75,12 @@
   --green: #3FA77E;
   --yellow: #E3AC33;
   --blue: #3E8FCB;
+  /* Sfumatura tra i due colori della squadra — stesse tinte pastello già
+     usate per le card "preso" nella scelta colore (.cc-*.cc-taken), così
+     il menu in alto e la riga "chi sei" restano nello stesso linguaggio
+     visivo del resto dell'app invece di introdurre colori nuovi. */
+  --team-a-gradient: linear-gradient(120deg, #F7DCDE 0%, #FBF1D8 100%);
+  --team-b-gradient: linear-gradient(120deg, #DCEFE5 0%, #DCE9F3 100%);
 }
 
 * { box-sizing: border-box; }
@@ -103,23 +109,12 @@ body {
 #app { max-width: 480px; margin: 0 auto; padding: calc(26px + env(safe-area-inset-top)) 20px 20px; min-height: 100vh; min-height: 100dvh; }
 
 h1 { font-size: 1.4rem; margin: 0 0 4px; color: var(--ink); }
+/* Il logo era prima ricostruito a mano con pallini CSS + testo + una
+   "squiggle" SVG (rimasti come commento nella storia del file) — ora è
+   direttamente il logo vero (logo.png), identico su tutti i dispositivi
+   invece di essere una ricostruzione approssimata via codice. */
 .app-logo { display: flex; flex-direction: column; align-items: center; margin-bottom: 16px; transform: rotate(-2deg); }
-.app-logo h1 {
-  text-align: center;
-  font-family: 'Permanent Marker', cursive;
-  font-weight: 400;
-  font-size: 2.3rem;
-  letter-spacing: 0.01em;
-  color: #3B2A18;
-  margin: 0;
-}
-.app-logo-squiggle { margin-top: 2px; display: block; }
-.app-logo-dots { display: flex; justify-content: space-between; margin-bottom: 5px; }
-.app-logo-dots span { border-radius: 50%; box-shadow: 0 2px 4px rgba(0,0,0,0.25); aspect-ratio: 1 / 1; }
-.app-logo-dots .ld-red { background: var(--red); }
-.app-logo-dots .ld-green { background: var(--green); }
-.app-logo-dots .ld-yellow { background: var(--yellow); }
-.app-logo-dots .ld-blue { background: var(--blue); }
+.app-logo-img { display: block; width: 220px; max-width: 62vw; height: auto; }
 .sound-test-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
 .app-meta { font-size: 0.65rem; color: #A79A82; letter-spacing: 0.02em; opacity: 0.8; margin: 0; }
 .muted { color: #8A7F6E; font-size: 0.9rem; }
@@ -184,9 +179,7 @@ h1 { font-size: 1.4rem; margin: 0 0 4px; color: var(--ink); }
   align-items: flex-start;
   margin-bottom: 0;
 }
-.lobby-header-row .app-logo-dots { justify-content: flex-start; gap: 5px; width: 74px; }
-.lobby-header-row .app-logo-dots span { width: 7px; height: 7px; }
-.lobby-header-row .app-logo h1 { text-align: left; font-size: 2rem; }
+.lobby-header-row .app-logo-img { width: 130px; max-width: 42vw; }
 
 /* "Etichetta" bianca con il codice stanza, come nel mockup — al posto del
    codice infilato nel paragrafo di istruzioni. */
@@ -310,6 +303,20 @@ h1 { font-size: 1.4rem; margin: 0 0 4px; color: var(--ink); }
 .color-cell.cc-green.cc-free { border-color: #D7E9DF; background: #F4FAF7; }
 .color-cell.cc-yellow.cc-free { border-color: #F1E4BB; background: #FDFAEF; }
 .color-cell.cc-blue.cc-free { border-color: #D7E6F0; background: #F4F9FC; }
+/* In scelta da un altro giocatore proprio in questo momento (vedi
+   reserveColorPending) — non ancora "preso" per davvero (quello succede
+   solo quando qualcuno preme "Entra nella stanza", protetto da
+   transazione), ma un piccolo avviso subito evita che due persone
+   scelgano lo stesso colore senza accorgersene finché una delle due non
+   perde la conferma finale (bug segnalato). Resta cliccabile: è solo un
+   avviso, non un blocco vero. */
+.color-cell.cc-pending { border-style: dashed; border-width: 1.5px; }
+.color-cell.cc-red.cc-pending { border-color: #E3ABB0; background: #FDF6F6; }
+.color-cell.cc-green.cc-pending { border-color: #9FCFB4; background: #F4FAF7; }
+.color-cell.cc-yellow.cc-pending { border-color: #EFDFB0; background: #FDFAEF; }
+.color-cell.cc-blue.cc-pending { border-color: #9EC3DE; background: #F4F9FC; }
+.cc-pending .color-card-free-label { font-style: italic; }
+.pending-hint { font-style: italic; }
 .color-cell.cc-taken {
   border-style: solid;
   border-width: 1.5px;
@@ -687,22 +694,33 @@ button.danger:active {
    nome stanza nella stessa riga). flex-wrap invece di ellipsis/
    troncamento: con un nome lungo o uno schermo stretto va a capo, ma il
    testo resta sempre leggibile per intero. */
+/* Non c'è più il nome qui dentro (solo la squadra, vedi renderGameShell)
+   — resta un contenitore centrato invece di una riga allineata a
+   sinistra, dato che ora ha un solo contenuto breve. */
 .identity-row {
   display: flex;
   align-items: center;
+  justify-content: center;
   flex-wrap: wrap;
   gap: 6px;
   font-size: 0.82rem;
   font-weight: 700;
   margin-bottom: 10px;
+  padding: 9px 14px;
+  border-radius: 14px;
 }
-.identity-sep { color: var(--muted-3); font-weight: 400; }
+.identity-row.team-a-bg { background: var(--team-a-gradient); }
+.identity-row.team-b-bg { background: var(--team-b-gradient); }
+/* Ora è l'unico contenuto del riquadro (non più una sotto-etichetta
+   accanto al nome), quindi più leggibile/scuro invece del grigio
+   attenuato di prima. */
 .identity-team {
-  font-size: 0.76rem;
-  font-weight: 600;
-  color: var(--muted-3);
+  font-size: 0.86rem;
+  font-weight: 800;
+  color: var(--ink);
 }
 .identity-row .swatch { flex-shrink: 0; }
+.identity-row .swatch + .swatch { margin-left: -4px; }
 .icon-btn {
   width: 34px;
   height: 34px;
@@ -823,8 +841,8 @@ button.danger:active {
   display: flex; align-items: center; gap: 7px;
   padding: 6px 12px;
   /* 10px come tutte le altre "card" impilate qui sotto (turn-line,
-     status-row, hand-row, chat-box, #board-wrap) — prima era 8px, unico
-     valore diverso nella pila, distanze non regolari. */
+     board-players-row, hand-row, chat-box, #board-wrap) — prima era 8px,
+     unico valore diverso nella pila, distanze non regolari. */
   margin: 0 0 10px;
   font-size: 0.78rem; color: var(--ink);
   background: var(--panel);
@@ -856,40 +874,50 @@ button.danger:active {
   font-size: 0.6rem;
 }
 
-.status-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-  margin-bottom: 10px;
+/* Nomi giocatori + pedine "fuori" agli angoli sopra/sotto il tabellone
+   (vedi renderPlayerStatus) — niente più riquadro/card: solo testo e
+   pallini, ciascuno vicino all'angolo dov'è davvero la sua base
+   (segnalato: troppi contenitori separati). */
+.board-players-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 0 2px;
+  min-height: 1px; /* evita un salto di layout quando è vuota (fasi senza stato "playing") */
 }
-.status-chip {
+#board-players-top { margin-bottom: 6px; }
+#board-players-bottom { margin-top: 6px; }
+/* Nome e pallini sulla stessa riga (l'ordine dei due — pallini poi nome, o
+   nome poi pallini — lo decide già il chiamante in renderPlayerStatus a
+   seconda del lato, qui c'è solo l'allineamento verticale/orizzontale
+   comune a entrambi). */
+.board-player {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 6px;
-  background: #FFFFFF;
-  border-radius: 14px;
-  padding: 10px 12px;
+  gap: 7px;
+  min-width: 0;
+  max-width: 48%;
+}
+.board-player.bp-right { justify-content: flex-end; }
+.board-player-head {
+  display: flex;
+  align-items: center;
+  gap: 5px;
   font-size: 0.8rem;
-  border: 1.5px solid var(--panel-border);
-  /* Senza questo, un riquadro con più contenuto degli altri tre (es. il
-     badge offline) non si adattava alla colonna 1fr della griglia sotto,
-     ma la allargava lui — mandando la riga fuori schermo (segnalato). Coi
-     figli già pronti a restringersi (status-name con ellissi, badge/icone
-     "nowrap" ma piccoli), min-width:0 lascia che sia la griglia a
-     comandare la larghezza, non il contenuto più ingombrante. */
+  font-weight: 800;
+  color: var(--ink);
   min-width: 0;
 }
-/* Il giocatore di turno ha il bordo del SUO colore (come nel mockup
-   In-partita.dc.html), non un bordo dorato generico uguale per tutti. */
-.status-chip-active.sc-red { border-color: var(--red); box-shadow: 0 4px 12px -6px rgba(217,99,107,0.4); }
-.status-chip-active.sc-green { border-color: var(--green); box-shadow: 0 4px 12px -6px rgba(63,167,126,0.4); }
-.status-chip-active.sc-yellow { border-color: var(--yellow); box-shadow: 0 4px 12px -6px rgba(227,172,51,0.4); }
-.status-chip-active.sc-blue { border-color: var(--blue); box-shadow: 0 4px 12px -6px rgba(62,143,203,0.4); }
-/* flex:1 + min-width:0 fanno sì che il nome si restringa (ellissi) invece
-   di andare a capo in modo incoerente tra un box e l'altro a seconda che
-   sia presente o no l'icona del mazziere accanto. */
-.status-name { font-weight: 600; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.board-player-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Il giocatore di turno si riconosce dal nome sottolineato nel SUO
+   colore (prima era il bordo di un riquadro che non c'è più — vedi
+   In-partita.dc.html per l'idea originale). */
+.board-player.bp-active .board-player-name { text-decoration-line: underline; text-decoration-thickness: 2.5px; text-underline-offset: 3px; }
+.board-player.bp-active.bp-red .board-player-name { color: var(--red); text-decoration-color: var(--red); }
+.board-player.bp-active.bp-green .board-player-name { color: var(--green); text-decoration-color: var(--green); }
+.board-player.bp-active.bp-yellow .board-player-name { color: var(--yellow); text-decoration-color: var(--yellow); }
+.board-player.bp-active.bp-blue .board-player-name { color: var(--blue); text-decoration-color: var(--blue); }
 .status-offline-warning {
   font-size: 0.62rem;
   font-weight: 700;
@@ -900,12 +928,13 @@ button.danger:active {
   white-space: nowrap;
   flex-shrink: 0;
 }
-.mini-pawns { width: 62px; height: 14px; flex-shrink: 0; }
+.mini-pawns { width: 68px; height: 16px; flex-shrink: 0; }
 .dealer-icon { width: 18px; height: 18px; flex-shrink: 0; }
 
 .hand-row {
   display: flex;
   flex-wrap: wrap;
+  justify-content: center;
   gap: 8px;
   margin-bottom: 10px;
 }
@@ -923,10 +952,19 @@ button.danger:active {
 }
 
 
+/* Larghezza calcolata per riempire bene lo spazio disponibile tenendo
+   conto che una mano può arrivare a 5 carte (vedi dealNewHand: 5 alla
+   prima mano del giro, poi 4) — 4 spazi da 8px tra le 5 carte, il resto
+   diviso in parti uguali, invece della dimensione fissa di prima (pensata
+   per poche carte, con tanto spazio vuoto a destra quando la mano era
+   più piccola). L'altezza segue in proporzione (aspect-ratio) invece di
+   un valore fisso, così le carte restano ben proporzionate a qualunque
+   larghezza risulti lo schermo. */
 .card-btn {
-  min-width: 54px;
-  width: 54px;
-  height: 76px;
+  min-width: 46px;
+  width: calc((100% - 32px) / 5);
+  max-width: 84px;
+  aspect-ratio: 54 / 76;
   padding: 4px;
   border-radius: 6px;
   border: 1.5px solid #A79A82;
@@ -2082,6 +2120,17 @@ const BOARD = {
 const COLORS = ["red", "green", "yellow", "blue"];
 const TEAM_OF = { red: "A", yellow: "A", green: "B", blue: "B" };
 const TEAM_LABEL = { A: "Rosso + Giallo", B: "Verde + Blu" };
+// I due colori di ciascuna squadra, nello stesso ordine di TEAM_LABEL — usati
+// per i due pallini nel riquadro "Squadra" (vedi renderGameShell).
+const TEAM_COLORS = { A: ["red", "yellow"], B: ["green", "blue"] };
+// Classe CSS per sfumare menu in alto e riga "chi sei" con i colori della
+// TUA squadra (vedi .top-actions-row/.identity-row e --team-a-gradient/
+// --team-b-gradient nel :root) — un fallback neutro se per qualche motivo
+// myColor non è (ancora) valorizzato, invece di rompere il layout.
+function teamBgClass(color) {
+  const team = TEAM_OF[color];
+  return team ? "team-" + team.toLowerCase() + "-bg" : "";
+}
 const ITALIAN_COLOR = { red: "Rosso", green: "Verde", yellow: "Giallo", blue: "Blu" };
 function cn(color) { return ITALIAN_COLOR[color] || color; }
 const SUIT_SYMBOL = { hearts: "♥", diamonds: "♦", clubs: "♣", spades: "♠" };
@@ -2195,6 +2244,12 @@ function normalizeState(state) {
   if (!state.hands) state.hands = {};
   if (!state.pawns) state.pawns = {};
   if (!state.players) state.players = {};
+  // Prenotazioni "leggere" (best-effort, non autoritative) scritte appena
+  // qualcuno SELEZIONA un colore in lobby, prima ancora di premere "Entra
+  // nella stanza" — vedi reserveColorPending/freshPendingColor. Servono
+  // solo a mostrare un avviso agli altri; la vera assegnazione resta
+  // sempre e solo quella (protetta da transazione) in joinManualRoom.
+  if (!state.pending) state.pending = {};
   if (!state.pendingExchange) state.pendingExchange = {};
   if (!state.lastReceivedCard) state.lastReceivedCard = {};
   if (!Array.isArray(state.playedThisCycle)) state.playedThisCycle = [];
@@ -4512,7 +4567,7 @@ function renderPawns(svg, board, pawns, lastSwap, lastCapture, lastHomeEntry) {
 // Bumped by hand each time a new build is produced — shown in the lobby so
 // it's obvious at a glance whether you're on the latest version, instead
 // of guessing from a stale browser tab or cache.
-const APP_VERSION = "v4.41";
+const APP_VERSION = "v4.45";
 
 let myColor = null;
 let myRoomId = null;
@@ -4624,14 +4679,7 @@ function renderLobby() {
       "div",
       { class: "lobby-card" },
       el("div", { class: "app-logo" },
-        el("div", { class: "app-logo-dots" },
-          el("span", { class: "ld-red" }), el("span", { class: "ld-green" }),
-          el("span", { class: "ld-yellow" }), el("span", { class: "ld-blue" })
-        ),
-        el("h1", {}, "Tock"),
-        svgIcon("150", "16", "0 0 150 16", "#C99A3A", "4", [
-          ["path", { d: "M 4 8 Q 22 -2 40 8 T 76 8 T 112 8 T 146 8" }],
-        ], "app-logo-squiggle")
+        el("img", { class: "app-logo-img", src: "./logo.png", alt: "Tock" })
       ),
       el("p", { class: "muted" }, "Inserisci il codice stanza per creare o entrare in una partita."),
       roomInput,
@@ -4665,24 +4713,6 @@ function renderLobby() {
       homeScreenHint()
     )
   );
-
-  sizeLogoDotsToTitle();
-}
-
-function sizeLogoDotsToTitle() {
-  const dotsRow = document.querySelector(".app-logo-dots");
-  const title = document.querySelector(".app-logo h1");
-  if (!dotsRow || !title) return;
-  const w = title.offsetWidth;
-  dotsRow.style.width = w + "px";
-  // 4 pallini + 3 spazi (space-between) larghi quanto la scritta "Tock".
-  const d = Math.round(w / 5.2);
-  dotsRow.querySelectorAll("span").forEach((s) => {
-    s.style.width = d + "px";
-    s.style.height = d + "px";
-  });
-  const squiggle = document.querySelector(".app-logo-squiggle");
-  if (squiggle) squiggle.setAttribute("width", w);
 }
 
 // Link di invito diretto: chi lo apre arriva già con il codice stanza
@@ -4960,18 +4990,7 @@ function renderManualLobby(roomId, existingPlayers) {
         el(
           "div",
           { class: "app-logo" },
-          el(
-            "div",
-            { class: "app-logo-dots" },
-            el("span", { class: "ld-red" }),
-            el("span", { class: "ld-green" }),
-            el("span", { class: "ld-yellow" }),
-            el("span", { class: "ld-blue" })
-          ),
-          el("h1", {}, "Tock"),
-          svgIcon("74", "10", "0 0 150 16", "#C99A3A", "4", [
-            ["path", { d: "M 4 8 Q 22 -2 40 8 T 76 8 T 112 8 T 146 8" }],
-          ], "app-logo-squiggle")
+          el("img", { class: "app-logo-img", src: "./logo.png", alt: "Tock" })
         ),
         el(
           "button",
@@ -5003,15 +5022,14 @@ function renderManualLobby(roomId, existingPlayers) {
       el(
         "div",
         { class: "sound-test-row" },
-        el("button", { class: "text-link-btn", onclick: () => { stopLobbyListener(); renderLobby(); } }, backChevronIcon(), "Cambia stanza"),
+        el("button", { class: "text-link-btn", onclick: () => { if (myColor) releaseColorPending(roomId, myColor); stopLobbyListener(); renderLobby(); } }, backChevronIcon(), "Cambia stanza"),
         el("span", { class: "app-meta" }, `Tock by Mig · ${APP_VERSION} · © 2026 Mig`)
       ),
       homeScreenHint()
     )
   );
 
-  sizeLogoDotsToTitle();
-  renderLobbyColorSection(roomId, existingPlayers);
+  renderLobbyColorSection(roomId, existingPlayers, {});
 
   // Ascolto in tempo reale: prima questa schermata era una fotografia presa
   // una volta sola, quindi se un altro giocatore sceglieva un colore (o gli
@@ -5021,8 +5039,8 @@ function renderManualLobby(roomId, existingPlayers) {
   // dei colori viene ridisegnata, vedi renderLobbyColorSection).
   const ref = roomRef(roomId);
   ref.on("value", (snap) => {
-    const players = (snap.val() && normalizeState(snap.val()).players) || {};
-    renderLobbyColorSection(roomId, players);
+    const state = snap.val() ? normalizeState(snap.val()) : null;
+    renderLobbyColorSection(roomId, (state && state.players) || {}, (state && state.pending) || {});
   });
   lobbyListenerRef = ref;
 
@@ -5035,8 +5053,8 @@ function renderManualLobby(roomId, existingPlayers) {
       .get()
       .then((snap) => {
         if (!lobbyListenerRef) return; // nel frattempo si è già entrati/cambiata stanza
-        const players = (snap.val() && normalizeState(snap.val()).players) || {};
-        renderLobbyColorSection(roomId, players);
+        const state = snap.val() ? normalizeState(snap.val()) : null;
+        renderLobbyColorSection(roomId, (state && state.players) || {}, (state && state.pending) || {});
       })
       .catch(() => {});
   }, 4000);
@@ -5057,8 +5075,8 @@ document.addEventListener("visibilitychange", () => {
     .get()
     .then((snap) => {
       if (!lobbyListenerRef) return; // nel frattempo si è già entrati/cambiata stanza
-      const players = (snap.val() && normalizeState(snap.val()).players) || {};
-      renderLobbyColorSection(lastColorSectionArgs.roomId, players);
+      const state = snap.val() ? normalizeState(snap.val()) : null;
+      renderLobbyColorSection(lastColorSectionArgs.roomId, (state && state.players) || {}, (state && state.pending) || {});
     })
     .catch(() => {});
 });
@@ -5069,10 +5087,10 @@ document.addEventListener("visibilitychange", () => {
 // scrivendo nel campo sopra. Chiamata sia al primo render sia da ogni
 // tick dell'ascolto Firebase in renderManualLobby.
 let lastColorSectionArgs = null;
-function renderLobbyColorSection(roomId, existingPlayers) {
+function renderLobbyColorSection(roomId, existingPlayers, pending) {
   const wrap = $("#color-row-wrap");
   if (!wrap) return; // non siamo più su questa schermata (es. si è già entrati)
-  lastColorSectionArgs = { roomId, existingPlayers };
+  lastColorSectionArgs = { roomId, existingPlayers, pending };
 
   // Una selezione già fatta non deve sparire solo perché la schermata si è
   // aggiornata (da un'azione tua su un bot, o ora anche da un altro
@@ -5099,6 +5117,13 @@ function renderLobbyColorSection(roomId, existingPlayers) {
   const colorBtn = (c) => {
     const occupant = existingPlayers && existingPlayers[c];
     const mine = !occupant && myColor === c;
+    // Qualcun altro lo ha appena selezionato (non ancora confermato con
+    // "Entra nella stanza") — vedi reserveColorPending. Il riquadro viene
+    // disabilitato come per un colore già preso da un umano/bot, così non
+    // si può cliccarci sopra proprio mentre un altro sta decidendo; è
+    // comunque solo una protezione "morbida" lato interfaccia — la vera
+    // assegnazione resta protetta dalla transazione in joinManualRoom.
+    const pendingOther = !occupant && !mine && freshPendingColor(pending, c);
     let inner;
     if (occupant) {
       inner = [
@@ -5114,12 +5139,14 @@ function renderLobbyColorSection(roomId, existingPlayers) {
         el("div", { class: "color-card-name" }, myDisplayName),
         el("div", { class: "color-card-sub" }, `${colorLabel(c)} · tu`),
       ];
+    } else if (pendingOther) {
+      inner = [el("span", { class: "color-card-dot" }), el("div", { class: "color-card-free-label" }, "In scelta…")];
     } else {
       inner = [el("span", { class: "color-card-dot" }), el("div", { class: "color-card-free-label" }, "Libero")];
     }
     return el(
       "button",
-      { class: "color-btn color-" + c, onclick: () => selectColor(c), "data-color": c, disabled: takenColors.has(c) },
+      { class: "color-btn color-" + c, onclick: () => selectColor(c), "data-color": c, disabled: takenColors.has(c) || pendingOther },
       inner
     );
   };
@@ -5132,6 +5159,12 @@ function renderLobbyColorSection(roomId, existingPlayers) {
   const botCell = (c) => {
     const taken = existingPlayers && existingPlayers[c];
     if (!taken && myColor === c) return ""; // è il colore che hai appena scelto tu, niente pulsanti bot
+    // Un altro giocatore lo sta scegliendo proprio ora: niente pulsanti
+    // "assegna al computer" qui, per non invitare a scatenare proprio in
+    // quel momento una corsa fra bot e umano sullo stesso colore.
+    if (!taken && freshPendingColor(pending, c)) {
+      return el("div", { class: "bot-cell-assign" }, el("div", { class: "bot-assign-label pending-hint" }, "Un altro giocatore lo sta scegliendo…"));
+    }
     if (!taken) {
       return el(
         "div",
@@ -5160,7 +5193,8 @@ function renderLobbyColorSection(roomId, existingPlayers) {
   // div sotto) invece di un'unica card come nel mockup.
   const colorCell = (c) => {
     const occupant = existingPlayers && existingPlayers[c];
-    const state = occupant ? "cc-taken" : myColor === c ? "cc-mine" : "cc-free";
+    const pendingOther = !occupant && myColor !== c && freshPendingColor(pending, c);
+    const state = occupant ? "cc-taken" : myColor === c ? "cc-mine" : pendingOther ? "cc-pending" : "cc-free";
     return el("div", { class: `color-cell cc-${c} ${state}` }, colorBtn(c), botCell(c));
   };
   // COLORS è già nell'ordine giusto per riempire la griglia 2x2 riga per
@@ -5251,12 +5285,25 @@ function playerName(state, c) {
 }
 
 function selectColor(c) {
+  const roomId = lastColorSectionArgs && lastColorSectionArgs.roomId;
+  const prevColor = myColor;
   myColor = c;
+  // Prenota SUBITO il colore appena scelto (best-effort, non protetto da
+  // transazione: la vera assegnazione resta solo joinManualRoom) e libera
+  // quello eventualmente lasciato — così chiunque altro sia in questa
+  // lobby proprio ora lo vede "In scelta…" in tempo reale, invece di
+  // scoprirlo solo dopo aver perso la conferma finale (bug segnalato: un
+  // colore selezionato da un giocatore non risultava ancora "preso" agli
+  // occhi degli altri).
+  if (roomId) {
+    if (prevColor && prevColor !== c) releaseColorPending(roomId, prevColor);
+    reserveColorPending(roomId, c);
+  }
   // Ridisegna l'intera sezione colori invece di limitarsi a spostare la
   // classe "selected" — ora serve perché il riquadro scelto mostra anche il
   // segno di spunta e il tuo nome, non solo un bordo diverso.
   if (lastColorSectionArgs) {
-    renderLobbyColorSection(lastColorSectionArgs.roomId, lastColorSectionArgs.existingPlayers);
+    renderLobbyColorSection(lastColorSectionArgs.roomId, lastColorSectionArgs.existingPlayers, lastColorSectionArgs.pending);
   } else {
     const joinBtn = document.getElementById("join-btn");
     if (joinBtn) joinBtn.disabled = false;
@@ -5351,6 +5398,12 @@ async function joinManualRoom(roomId) {
     showToast("Non è stato possibile entrare nella stanza (richiesta non completata). Riprova.");
     return;
   }
+
+  // Ora che il colore è VERAMENTE assegnato (transazione confermata sopra),
+  // la prenotazione leggera non serve più — la liberiamo per pulizia (non è
+  // comunque un problema se questa chiamata fallisce: scade comunque da
+  // sola dopo PENDING_COLOR_TTL_MS, vedi freshPendingColor).
+  releaseColorPending(roomId, myColor);
 
   // (l'ascolto della lobby è già stato staccato in cima alla funzione)
   watchRoom(roomId, onStateChange);
@@ -5499,6 +5552,49 @@ function getOrCreateClaimToken(roomId, color) {
     // fresh token every time, which just means no reconnect protection.
     return Math.random().toString(36).slice(2) + Date.now().toString(36);
   }
+}
+
+// Prenotazione "leggera" e best-effort di un colore, scritta nell'istante
+// stesso in cui lo si SELEZIONA in lobby — non solo quando si preme "Entra
+// nella stanza", che resta l'unica scrittura VERA e protetta da
+// transazione (vedi joinManualRoom). Serve solo a mostrare agli altri
+// giocatori "In scelta…" invece di "Libero" durante la finestra in cui
+// qualcuno ha già cliccato ma non ancora confermato (bug segnalato: un
+// colore selezionato non risultava "preso" agli occhi degli altri finché
+// uno dei due non perdeva la transazione finale). Un fallimento di
+// scrittura qui non deve mai bloccare nulla — nel peggiore dei casi
+// l'avviso semplicemente non compare.
+function reserveColorPending(roomId, color) {
+  try {
+    const token = getOrCreateClaimToken(roomId, color);
+    roomRef(roomId).child("pending").child(color).set({ token, ts: Date.now() }).catch(() => {});
+  } catch (e) {}
+}
+
+// Libera una prenotazione SOLO se è la nostra (stesso token, verificato con
+// una transazione) — così non si rischia mai di cancellare per sbaglio la
+// prenotazione di un altro giocatore che nel frattempo ha scelto lo stesso
+// colore dopo di noi.
+function releaseColorPending(roomId, color) {
+  try {
+    const token = getOrCreateClaimToken(roomId, color);
+    roomRef(roomId)
+      .child("pending")
+      .child(color)
+      .transaction((current) => (current && current.token === token ? null : current))
+      .catch(() => {});
+  } catch (e) {}
+}
+
+// Una prenotazione conta solo per una finestra breve: se chi l'ha fatta
+// chiude la scheda, cambia idea senza scegliere un altro colore, o perde
+// semplicemente la connessione, non deve restare mostrata come "In
+// scelta…" per sempre — scade da sola, senza bisogno di nessuna pulizia
+// lato server.
+const PENDING_COLOR_TTL_MS = 45000;
+function freshPendingColor(pending, c) {
+  const p = pending && pending[c];
+  return !!(p && p.token && typeof p.ts === "number" && Date.now() - p.ts < PENDING_COLOR_TTL_MS);
 }
 
 // A room-scoped (not per-color) token used only during il flusso
@@ -6264,23 +6360,25 @@ function renderGameShell() {
       ),
       el("div", { id: "conn-banner" }),
       el("div", { id: "dealer-draw-wrap" }),
-      // Chi sei + squadra: un'unica riga, tra il menu e il tabellone
-      // (prima era insieme al nome stanza nella stessa riga — richiesto di
-      // separarli: stanza accanto al menu, questo qui sotto).
+      // Solo la squadra qui (non più il nome, tolto su richiesta — resta
+      // solo nel tabellone, vedi renderPlayerStatus), sfumata con i colori
+      // della TUA squadra tra il menu e il tabellone.
       el(
         "div",
-        { class: "identity-row" },
-        swatchDot(myColor),
-        el("span", { class: "identity-name" }, myName),
-        el("span", { class: "identity-sep" }, "·"),
-        el("span", { class: "identity-team" }, `squadra ${TEAM_LABEL[TEAM_OF[myColor]]}`)
+        { class: "identity-row " + teamBgClass(myColor) },
+        ...TEAM_COLORS[TEAM_OF[myColor]].map(swatchDot),
+        el("span", { class: "identity-team" }, `Squadra ${TEAM_LABEL[TEAM_OF[myColor]]}`)
       ),
+      // Nomi giocatori + pedine "fuori" agli angoli sopra/sotto il
+      // tabellone (vedi renderPlayerStatus) invece che in riquadri a parte
+      // più sotto — ciascuno vicino all'angolo dov'è davvero la sua base.
+      el("div", { id: "board-players-top", class: "board-players-row" }),
       el("div", { id: "board-wrap" }),
+      el("div", { id: "board-players-bottom", class: "board-players-row" }),
       el("div", { id: "start-wrap" }),
       el("div", { id: "exchange-wrap" }),
       el("div", { id: "turn-indicator" }),
       el("div", { id: "hand-wrap", class: "hand-row" }),
-      el("div", { id: "status-wrap" }),
       // Bottone chat, subito sotto i campi con le pedine (segnalato: "la
       // chat è un po' sotto e non è visibile a colpo d'occhio"). Non è
       // "flottante" in senso stretto (non è position:fixed, quindi non
@@ -7739,23 +7837,40 @@ async function sendExchangeCard(card) {
   }
 }
 
-// .status-row è una griglia a 2 colonne (vedi CSS), riempita riga per riga:
-// 1°=alto-sx, 2°=alto-dx, 3°=basso-sx, 4°=basso-dx. L'ordine COLORS
-// (rosso, verde, giallo, blu) letto così mette il giallo in basso a
-// SINISTRA e il blu in basso a DESTRA — l'opposto di come stanno le basi
-// sul tabellone vero (giallo in basso a destra, blu in basso a sinistra,
-// proseguendo in senso orario da rosso a verde). Questo ordine dedicato
-// (giallo e blu scambiati rispetto a COLORS) fa sì che la griglia rispecchi
-// davvero la disposizione fisica del tabellone — NON va confuso con COLORS,
-// che resta l'ordine di gioco/turni vero e proprio, invariato.
-const STATUS_GRID_ORDER = ["red", "green", "blue", "yellow"];
+// Ordine di lettura sopra/sotto il tabellone: [alto-sx, alto-dx] e
+// [basso-sx, basso-dx]. L'ordine COLORS (rosso, verde, giallo, blu) letto
+// così metterebbe il giallo in basso a SINISTRA e il blu in basso a DESTRA
+// — l'opposto di come stanno le basi sul tabellone vero (giallo in basso a
+// destra, blu in basso a sinistra, proseguendo in senso orario da rosso a
+// verde). Questo ordine dedicato (giallo e blu scambiati rispetto a
+// COLORS) fa sì che ogni nome compaia vicino alla PROPRIA base — NON va
+// confuso con COLORS, che resta l'ordine di gioco/turni vero e proprio,
+// invariato.
+const STATUS_TOP_ORDER = ["red", "green"];
+const STATUS_BOTTOM_ORDER = ["blue", "yellow"];
 
+// Nome + pedine "fuori dalla base" (vedi miniPawnsRow) per ciascun
+// giocatore, senza più un riquadro/card a sé — solo testo e pallini
+// posizionati sopra e sotto il tabellone, agli angoli corrispondenti alla
+// base di quel colore (segnalato: troppi contenitori separati; ora si
+// legge subito vicino a dove gioca davvero). Nome e pallini stanno sulla
+// STESSA riga (non più impilati) — a sinistra del tabellone i pallini
+// vengono prima e il nome dopo, verso il centro; a destra è speculare
+// (nome verso il centro, pallini verso il bordo), così i due nomi si
+// avvicinano l'uno all'altro invece di restare ognuno appiccicato al suo
+// bordo. Il colore lo dicono già i pallini pieni/vuoti (stesso hex del
+// giocatore), quindi non serve più anche un pallino separato solo per
+// quello. Il giocatore di turno si riconosce dal nome sottolineato nel
+// SUO colore, non più da un bordo su un riquadro che non c'è più.
 function renderPlayerStatus(state) {
-  const wrap = $("#status-wrap");
-  wrap.innerHTML = "";
+  const topWrap = $("#board-players-top");
+  const bottomWrap = $("#board-players-bottom");
+  if (!topWrap || !bottomWrap) return;
+  topWrap.innerHTML = "";
+  bottomWrap.innerHTML = "";
   if (state.phase !== "playing" && state.phase !== "exchanging") return;
-  const row = el("div", { class: "status-row" });
-  for (const c of STATUS_GRID_ORDER) {
+
+  const buildPlayer = (c, isRightSide) => {
     const isTurn = state.phase === "playing" && state.turnColor === c;
     const isDealer = state.dealerColor === c;
     const isBotSeat = state.players[c] && state.players[c].isBot;
@@ -7763,27 +7878,29 @@ function renderPlayerStatus(state) {
     // ogni connessione viva di quel colore (vedi setupOwnPresence), non un
     // singolo booleano: online finché ne resta almeno una.
     const isOnline = !!presenceState[c] && Object.keys(presenceState[c]).length > 0;
-    row.appendChild(
-      el(
-        "div",
-        { class: `status-chip sc-${c}` + (isTurn ? " status-chip-active" : "") },
-        el("span", { class: "status-name" }, playerName(state, c)),
-        // Nessun indicatore quando tutto è normale (online, o un bot che
-        // per definizione "c'è" sempre) — solo un'icona quando un
-        // giocatore umano risulta davvero disconnesso.
-        // Solo l'icona (senza la scritta "offline"): il testo allargava il
-        // riquadro rispetto agli altri tre nella stessa griglia, mandando
-        // la riga fuori schermo — segnalato. Il motivo resta comunque
-        // leggibile al tocco/hover tramite il title.
-        !isBotSeat && state.players[c] && !isOnline
-          ? el("span", { class: "status-offline-warning", title: `${colorLabel(c)} non è connesso in questo momento` }, "⚠️")
-          : "",
-        isDealer ? dealerIcon() : "",
-        miniPawnsRow(state.pawns[c], c)
-      )
+    const head = el(
+      "div",
+      { class: "board-player-head" },
+      el("span", { class: "board-player-name" }, playerName(state, c)),
+      isDealer ? dealerIcon() : "",
+      // Solo l'icona (senza la scritta "offline"): il motivo resta
+      // comunque leggibile al tocco/hover tramite il title.
+      !isBotSeat && state.players[c] && !isOnline
+        ? el("span", { class: "status-offline-warning", title: `${colorLabel(c)} non è connesso in questo momento` }, "⚠️")
+        : ""
     );
-  }
-  wrap.appendChild(row);
+    const dots = miniPawnsRow(state.pawns[c], c);
+    return el(
+      "div",
+      { class: `board-player bp-${c}` + (isTurn ? " bp-active" : "") + (isRightSide ? " bp-right" : "") },
+      ...(isRightSide ? [head, dots] : [dots, head])
+    );
+  };
+
+  topWrap.appendChild(buildPlayer(STATUS_TOP_ORDER[0], false));
+  topWrap.appendChild(buildPlayer(STATUS_TOP_ORDER[1], true));
+  bottomWrap.appendChild(buildPlayer(STATUS_BOTTOM_ORDER[0], false));
+  bottomWrap.appendChild(buildPlayer(STATUS_BOTTOM_ORDER[1], true));
 }
 
 // Small hand-drawn "stack of cards" icon marking the current dealer —
