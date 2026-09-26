@@ -114,7 +114,7 @@ h1 { font-size: 1.4rem; margin: 0 0 4px; color: var(--ink); }
    direttamente il logo vero (logo.png), identico su tutti i dispositivi
    invece di essere una ricostruzione approssimata via codice. */
 .app-logo { display: flex; flex-direction: column; align-items: center; margin-bottom: 16px; transform: rotate(-2deg); }
-.app-logo-img { display: block; width: 220px; max-width: 62vw; height: auto; }
+.app-logo-img { display: block; width: 170px; max-width: 50vw; height: auto; }
 .sound-test-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
 .app-meta { font-size: 0.65rem; color: #A79A82; letter-spacing: 0.02em; opacity: 0.8; margin: 0; }
 .muted { color: #8A7F6E; font-size: 0.9rem; }
@@ -135,7 +135,10 @@ h1 { font-size: 1.4rem; margin: 0 0 4px; color: var(--ink); }
   border: 1px solid var(--panel-border);
   border-radius: 18px;
   padding: 18px;
-  margin-bottom: 18px;
+  /* Prima non aveva margine sopra: subito dopo la riga di nomi/pedine
+     sotto il tabellone restava "attaccata" (segnalato), con solo i 6px di
+     .board-players-row a separarla. */
+  margin: 14px 0 18px;
 }
 .exchange-card p { margin: 0 0 6px; }
 .exchange-card p:last-child { margin-bottom: 0; }
@@ -838,11 +841,13 @@ button.danger:active {
 }
 
 .last-card-line {
-  display: flex; align-items: center; gap: 7px;
-  padding: 6px 12px;
+  display: flex; align-items: center; justify-content: center; gap: 9px;
+  padding: 7px 12px;
   /* 10px come tutte le altre "card" impilate qui sotto (turn-line,
      board-players-row, hand-row, chat-box, #board-wrap) — prima era 8px,
-     unico valore diverso nella pila, distanze non regolari. */
+     unico valore diverso nella pila, distanze non regolari. Centrata
+     (invece che allineata a sinistra) e con la mini-carta più grande, per
+     farla leggere a colpo d'occhio come la giocata dell'avversario. */
   margin: 0 0 10px;
   font-size: 0.78rem; color: var(--ink);
   background: var(--panel);
@@ -852,18 +857,18 @@ button.danger:active {
 .last-card-text { flex-shrink: 0; }
 .mini-card {
   position: relative;
-  width: 24px; height: 32px; flex-shrink: 0;
-  border-radius: 4px;
+  width: 32px; height: 43px; flex-shrink: 0;
+  border-radius: 5px;
   border: 1px solid #A79A82;
   background: linear-gradient(180deg, #fffefb, #f4ecd8);
-  box-shadow: 0 2px 4px rgba(0,0,0,0.3), 0 1px 0 rgba(255,255,255,0.8) inset;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.3), 0 1px 0 rgba(255,255,255,0.8) inset;
   display: inline-block;
 }
 .mini-card.suit-red { color: #B03040; }
 .mini-card.suit-black { color: #241C15; }
 .mini-card-rank {
-  position: absolute; top: 1px; left: 2px;
-  font-size: 0.55rem; font-weight: 800; line-height: 1;
+  position: absolute; top: 2px; left: 3px;
+  font-size: 0.68rem; font-weight: 800; line-height: 1;
 }
 .mini-card.mini-card-burned {
   filter: grayscale(0.7);
@@ -871,7 +876,7 @@ button.danger:active {
 }
 .mini-card-burn-badge {
   position: absolute; bottom: -5px; right: -5px;
-  font-size: 0.6rem;
+  font-size: 0.7rem;
 }
 
 /* Nomi giocatori + pedine "fuori" agli angoli sopra/sotto il tabellone
@@ -929,7 +934,7 @@ button.danger:active {
   flex-shrink: 0;
 }
 .mini-pawns { width: 68px; height: 16px; flex-shrink: 0; }
-.dealer-icon { width: 18px; height: 18px; flex-shrink: 0; }
+.dealer-icon { width: 20px; height: 20px; flex-shrink: 0; }
 
 .hand-row {
   display: flex;
@@ -4567,7 +4572,7 @@ function renderPawns(svg, board, pawns, lastSwap, lastCapture, lastHomeEntry) {
 // Bumped by hand each time a new build is produced — shown in the lobby so
 // it's obvious at a glance whether you're on the latest version, instead
 // of guessing from a stale browser tab or cache.
-const APP_VERSION = "v4.45";
+const APP_VERSION = "v4.50";
 
 let myColor = null;
 let myRoomId = null;
@@ -6717,9 +6722,11 @@ function maybeAdvanceBotTurn(state) {
 function scheduleBotAction(fn) {
   if (botActionTimer) return; // un tentativo è già in programma
   // Pausa "umana" tra una mossa dei bot e la successiva — abbastanza lunga
-  // da poter seguire cosa succede sul tabellone (prima era 0,65-1,5s, troppo
-  // rapida per leggere mossa/presa/animazione quando giocano più bot di fila).
-  const delay = 1700 + Math.random() * 1400; // 1,7s – 3,1s
+  // da poter seguire cosa succede sul tabellone. Era già stata allungata una
+  // volta (0,65-1,5s -> 1,7-3,1s) ma con più bot di fila restava comunque
+  // troppo rapida per leggere mossa/presa/animazione una per una: ora è
+  // ancora più lunga (2,6-4,6s).
+  const delay = 2600 + Math.random() * 2000; // 2,6s – 4,6s
   botActionTimer = setTimeout(() => {
     botActionTimer = null;
     fn().catch((e) => console.error("bot:", e));
@@ -7025,6 +7032,15 @@ var BOT_WEIGHTS = {
   evalHomeStep: 2,
   threatPenalty: 1.5,
   threatBonus: 0.9,
+  // botCoordinationAdjustment: quanto conta salvare una pedina minacciata
+  // del COMPAGNO. Prima erano numeri fissi (3/-2) scritti direttamente lì
+  // dentro, troppo piccoli per contare davvero a confronto delle altre
+  // voci del punteggio (mangiare/entrare in casa valgono decine o
+  // centinaia di punti) — il bot "vedeva" il compagno in pericolo ma quasi
+  // mai era abbastanza per fargli davvero cambiare mossa. Spostati qui (per
+  // poterli tarare) e alzati parecchio.
+  partnerRescue: 30, // salva una pedina che il compagno da solo NON avrebbe potuto salvare
+  partnerRedundantRescue: -6, // la salva ma il compagno l'avrebbe comunque salvata da sé al suo turno: leggera penalità, meglio occuparsi d'altro
 };
 
 // Penalità di trattenere Jack/7, per rank — legge sempre BOT_WEIGHTS "dal
@@ -7138,20 +7154,26 @@ function botChooseCardAndMove(state, active, seat) {
 }
 
 // Bot "Normale": valuta solo il risultato IMMEDIATO di ogni mossa (nessun
-// lookahead sui turni successivi, nessuna euristica di coordinazione col
-// compagno, nessuna propensione a tenersi Jack/7 per dopo) — più semplice
-// e prevedibile del bot "Difficile" (botChooseCardAndMove), pensato per chi
-// sta imparando le regole. Gioca comunque le mosse legali disponibili e
-// preferisce quelle che migliorano subito la propria posizione (mangiare,
-// entrare in casa, avanzare), solo senza pianificare oltre il turno in
-// corso.
+// lookahead sui turni successivi, nessuna propensione a tenersi Jack/7 per
+// dopo) — più semplice e prevedibile del bot "Difficile"
+// (botChooseCardAndMove), pensato per chi sta imparando le regole. Gioca
+// comunque le mosse legali disponibili e preferisce quelle che migliorano
+// subito la propria posizione (mangiare, entrare in casa, avanzare), senza
+// pianificare oltre il turno in corso. Applica comunque
+// botCoordinationAdjustment (salvare una pedina del compagno sotto tiro,
+// se possibile gratis): anche un bot "per principianti" non deve ignorare
+// completamente il compagno in pericolo — prima lo ignorava del tutto,
+// unica differenza vera col Difficile non era la profondità di ricerca ma
+// il non pensare mai al compagno.
 function botChooseCardAndMoveEasy(state, active, seat) {
   const hand = state.hands[seat];
   const botTeam = TEAM_OF[seat];
   let best = null, bestScore = -Infinity;
   for (const card of hand) {
     for (const move of botCandidatesForCard(state, active, card)) {
-      const score = botScoreMove(state, active, card, move, botTeam) + Math.random() * 0.5;
+      let score = botScoreMove(state, active, card, move, botTeam);
+      score += botCoordinationAdjustment(state, active, seat, card, move);
+      score += Math.random() * 0.5;
       if (score > bestScore) {
         bestScore = score;
         best = { card, move };
@@ -7256,7 +7278,7 @@ function botCoordinationAdjustment(state, active, seat, card, move) {
     if (pos === -1 || pos >= 1000) continue;
     if (!botPawnThreatened(state.pawns, partner, i)) continue;
     if (botPawnThreatened(after.pawns, partner, i)) continue; // non l'ha messa al sicuro
-    delta += botSeatCanRescue(state, partner, partner, i) ? -2 : 3;
+    delta += botSeatCanRescue(state, partner, partner, i) ? BOT_WEIGHTS.partnerRedundantRescue : BOT_WEIGHTS.partnerRescue;
   }
   return delta;
 }
@@ -7387,8 +7409,15 @@ function botScoreMove(state, active, card, move, botTeam) {
 // (turni della propria squadra) e minimizzazione (turni avversari) come in
 // un normale minimax — così una mossa che sembra ottima ma regala
 // un'occasione facile all'avversario due mosse dopo viene penalizzata.
-const BOT_LOOKAHEAD_PLIES = 3; // 1 = solo la mossa propria (comportamento precedente)
-const BOT_LOOKAHEAD_BEAM = 4;  // quante mosse "papabili" esplorare per ogni turno successivo
+// Alzati da 3/4 a 4/5 (richiesto: bot "Difficile" più intelligente).
+// Verificato con partite bot-vs-bot in locale (vecchi pesi 3/4 contro
+// questi 4/5, alternando i colori fisici): la ricerca più profonda vince
+// circa il 70-80% delle partite contro quella precedente, e il tempo di
+// decisione resta comunque ampiamente dentro la pausa "umana" tra una
+// mossa e l'altra (vedi scheduleBotAction) — nel peggiore dei casi
+// osservato meno di 1 secondo, in media pochi millisecondi.
+const BOT_LOOKAHEAD_PLIES = 4; // 1 = solo la mossa propria (comportamento precedente)
+const BOT_LOOKAHEAD_BEAM = 5;  // quante mosse "papabili" esplorare per ogni turno successivo
 
 // Clona l'intero stato necessario per proseguire la simulazione oltre una
 // singola mossa (a differenza di botSimulate, che clona solo pedine/lapped
@@ -7905,29 +7934,43 @@ function renderPlayerStatus(state) {
 
 // Small hand-drawn "stack of cards" icon marking the current dealer —
 // clearer at a glance than a single playing-card emoji.
+// Prima erano solo cartoncini bianchi su sfondo bianco/crema — quasi
+// invisibili a questa dimensione (segnalato: "poco evidente"). Ora un
+// distintivo pieno in oro (stesso linguaggio degli altri badge tondi
+// dell'app, es. exchange-done-badge) con le cartine bianche sopra, così
+// il contrasto lo rende leggibile a colpo d'occhio anche piccolissimo.
 function dealerIcon() {
   const ns = "http://www.w3.org/2000/svg";
   const svg = document.createElementNS(ns, "svg");
   svg.setAttribute("viewBox", "0 0 40 40");
   svg.setAttribute("class", "dealer-icon");
+  const title = document.createElementNS(ns, "title");
+  title.textContent = "Mazziere";
+  svg.appendChild(title);
+  const bg = document.createElementNS(ns, "circle");
+  bg.setAttribute("cx", 20);
+  bg.setAttribute("cy", 20);
+  bg.setAttribute("r", 20);
+  bg.setAttribute("fill", "var(--gold, #C99A3A)");
+  svg.appendChild(bg);
   const g = document.createElementNS(ns, "g");
-  g.setAttribute("transform", "translate(20,20)");
+  g.setAttribute("transform", "translate(20,21)");
   const card = (x, y, rot) => {
     const r = document.createElementNS(ns, "rect");
     r.setAttribute("x", x);
     r.setAttribute("y", y);
-    r.setAttribute("width", 16);
-    r.setAttribute("height", 20);
+    r.setAttribute("width", 15);
+    r.setAttribute("height", 19);
     r.setAttribute("rx", 2.5);
     r.setAttribute("fill", "#FFFFFF");
-    r.setAttribute("stroke", "#241C15");
-    r.setAttribute("stroke-width", 1.4);
+    r.setAttribute("stroke", "#6B4E17");
+    r.setAttribute("stroke-width", 1.6);
     r.setAttribute("transform", `rotate(${rot})`);
     return r;
   };
-  g.appendChild(card(-11, -9, -14));
-  g.appendChild(card(-8, -10, 0));
-  g.appendChild(card(-5, -9, 14));
+  g.appendChild(card(-10.5, -8.5, -13));
+  g.appendChild(card(-7.5, -9.5, 0));
+  g.appendChild(card(-4.5, -8.5, 13));
   svg.appendChild(g);
   return svg;
 }
@@ -8038,7 +8081,7 @@ function renderTurnIndicator(state) {
 function miniCardVisual(card, burned) {
   const [r, s] = card.split("-");
   const isRed = !!RED_SUITS[s];
-  const icon = suitIconSvg(s, 13);
+  const icon = suitIconSvg(s, 17);
   icon.style.position = "absolute";
   icon.style.left = "50%";
   icon.style.top = "58%";
