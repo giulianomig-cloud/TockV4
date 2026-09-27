@@ -3390,20 +3390,24 @@ function applyMove(state, color, card, move) {
     // full forward lap, ready to turn into home next" when this move was a
     // FORWARD one (the "4" card moves backward and can coincidentally land
     // on base too, but that's not a completed lap).
-    {
-      const allInNow = allPawnsOnBoard(state, color);
-      const cardValue = moveValueOf(card, allInNow);
-      const movedForward = cardValue === null || cardValue > 0; // seven/etc fall elsewhere; move-type cards are never null here
-      setLapped(state, color, move.pawnIndex, dest < 1000 && dest === BOARD.baseIndex[color] && movedForward);
-    }
+    const allInNow = allPawnsOnBoard(state, color);
+    const cardValue = moveValueOf(card, allInNow);
+    const movedForward = cardValue === null || cardValue > 0; // seven/etc fall elsewhere; move-type cards are never null here
+    setLapped(state, color, move.pawnIndex, dest < 1000 && dest === BOARD.baseIndex[color] && movedForward);
     state.log.push(`${cn(color)} #${move.pawnIndex + 1} muove con ${cardLog(card)}: ${posLabel(color, oldPos)} → ${posLabel(color, dest)}.`);
     // if the path swung past this pawn's own base without turning into
     // its home stretch, say so explicitly — and be precise about WHY:
     // either the number genuinely didn't match any home cell, or it did
     // match but the way in was blocked by an occupied cell/home slot
     // (named exactly, for diagnosing reports without needing screenshots).
+    // Solo per mosse in AVANTI: la carta "4" va sempre indietro e attraversa
+    // regolarmente la propria base senza entrare in casa (si entra in casa
+    // solo andando avanti) — prima questo controllo scattava anche lì,
+    // scrivendo nel registro un falso allarme "motivo non identificato" per
+    // ogni "4" giocato all'indietro oltre la propria base (segnalato dal
+    // registro stesso: "partenza a 61 passi dalla base, numero 4").
     const baseIdx = BOARD.baseIndex[color];
-    if (dest < 1000 && dest !== baseIdx && move.path.includes(baseIdx)) {
+    if (movedForward && dest < 1000 && dest !== baseIdx && move.path.includes(baseIdx)) {
       const steps = move.path.length;
       const stepsBefore = stepsFromOwnBase(color, oldPos, wasLapped);
       const distanceToBase = (64 - stepsBefore) % 64; // how many steps to reach base itself
@@ -4836,7 +4840,7 @@ function renderPawns(svg, board, pawns, lastSwap, lastCapture, lastHomeEntry) {
 // Bumped by hand each time a new build is produced — shown in the lobby so
 // it's obvious at a glance whether you're on the latest version, instead
 // of guessing from a stale browser tab or cache.
-const APP_VERSION = "v4.71";
+const APP_VERSION = "v4.74";
 
 let myColor = null;
 let myRoomId = null;
@@ -7361,9 +7365,20 @@ var BOT_WEIGHTS = {
   // passo ulteriore fatto in casa, e i pesi della minaccia (quanto costa
   // avere una nostra pedina a tiro, quanto vale tenere un avversario a
   // tiro nostro).
-  evalBase: -4,
+  evalBase: -8, // era -4 — alzato per rendere il bot più cauto nelle
+  // situazioni che potrebbero costringerlo più avanti a dover mangiare una
+  // pedina della propria squadra (compagno o proprio colore): mandare in
+  // base una pedina della propria squadra ora pesa il doppio nel calcolo,
+  // quindi quando ha davvero un'alternativa la evita più spesso (nei casi
+  // FORZATI dalla regola "si mangia sempre, senza eccezioni" resta comunque
+  // senza scelta, questo peso non può aiutare in quei casi).
   evalHomeBase: 100,
-  evalHomeStep: 2,
+  evalHomeStep: 4, // era 2 — alzato per far preferire al bot, a parità di
+  // resto, spingere una pedina più a fondo in casa invece di fermarla
+  // proprio sulla casella d'entrata (che così resta bloccata per le
+  // prossime pedine in arrivo). Una minaccia reale su un'altra pedina pesa
+  // comunque molto di più (vedi threatPenalty/threatBonus) e continua a
+  // prevalere quando conta davvero.
   threatPenalty: 1.5,
   threatBonus: 0.9,
   // botCoordinationAdjustment: quanto conta salvare una pedina minacciata
