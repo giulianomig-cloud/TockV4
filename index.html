@@ -981,7 +981,14 @@ button.danger:active {
   color: var(--ink);
   min-width: 0;
 }
-.board-player-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Senza un min-width esplicito, in flexbox un elemento con overflow:hidden
+   può restringersi fino a (quasi) zero quando lo spazio scarseggia — è
+   esattamente quello che succede quando compare anche l'icona del
+   mazziere accanto al nome: il nome collassava a una sola lettera senza
+   nemmeno i puntini di troncamento (segnalato: "al mazziere scompare il
+   nome?"). Un min-width garantisce che restino sempre leggibili almeno
+   4-5 caratteri prima di troncare con "...". */
+.board-player-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 32px; }
 /* Il giocatore di turno si riconosce dal nome sottolineato nel SUO
    colore (prima era il bordo di un riquadro che non c'è più — vedi
    In-partita.dc.html per l'idea originale). */
@@ -4800,7 +4807,7 @@ function renderPawns(svg, board, pawns, lastSwap, lastCapture, lastHomeEntry) {
 // Bumped by hand each time a new build is produced — shown in the lobby so
 // it's obvious at a glance whether you're on the latest version, instead
 // of guessing from a stale browser tab or cache.
-const APP_VERSION = "v4.67";
+const APP_VERSION = "v4.68";
 
 let myColor = null;
 let myRoomId = null;
