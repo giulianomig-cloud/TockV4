@@ -526,6 +526,15 @@ h1 { font-size: 1.4rem; margin: 0 0 4px; color: var(--ink); }
 .dealer-slot.dealer-winner::before {
   content: "👑"; position: absolute; top: -16px; font-size: 18px; left: 50%; transform: translateX(-50%);
 }
+/* La carta qui riusa .card-btn (stessa di quelle in mano), ma la formula
+   "larghezza / 5" di .card-btn è pensata per una fila di 5 carte in mano
+   — in questa griglia da 2 colonne, con UNA sola carta per slot, quella
+   formula la faceva collassare quasi sempre al minimo (46px), molto più
+   piccola e sproporzionata (filigrana enorme sulla carta minuscola)
+   rispetto alle carte vere in partita (segnalato: "più brutte di quelle
+   di gioco"). Qui la dimensione è fissa, uguale a quella massima delle
+   carte in mano, non calcolata sulla larghezza dello slot. */
+.dealer-slot .card-btn { width: 64px; max-width: 64px; min-width: 64px; }
 .dealer-card-pop { animation: dealerCardPop 0.35s ease-out; }
 @keyframes dealerCardPop {
   0% { transform: scale(0.4) rotate(-8deg); opacity: 0; }
@@ -4527,6 +4536,32 @@ function flashJackSwapReplay(svg, board, swapInfo) {
 // Briefly highlights a Jack swap: a dashed gold arc between the two cells
 // involved, plus a pulsing ring on each pawn's new spot. Purely decorative,
 // removes itself after ~1.1s.
+// Icona "scambio" disegnata su misura (due frecce curve che formano un
+// anello) invece del glifo di sistema ⇄ usato prima — a differenza di un
+// carattere Unicode, ha lo stesso disegno/spessore ovunque, coerente con
+// lo stile delle altre icone dell'app, non dipendente dal font del
+// dispositivo di chi guarda.
+function buildJackSwapIcon(cx, cy, size) {
+  const ns = "http://www.w3.org/2000/svg";
+  const g = document.createElementNS(ns, "g");
+  g.setAttribute("transform", `translate(${cx},${cy}) scale(${size / 24}) translate(-12,-12)`);
+  const paths = [
+    "M17 1 L21 5 L17 9", // punta freccia in alto a destra
+    "M3 11 V9 A4 4 0 0 1 7 5 H21", // metà anello superiore
+    "M7 23 L3 19 L7 15", // punta freccia in basso a sinistra
+    "M21 13 V15 A4 4 0 0 1 17 19 H3", // metà anello inferiore
+  ];
+  // Contorno scuro sotto (stesso trucco usato prima per il testo ⇄) per
+  // restare leggibile su qualunque sfondo del tabellone, chiaro o scuro.
+  paths.forEach((d) => {
+    g.appendChild(ns_el("path", { d, fill: "none", stroke: "#3A2B22", "stroke-width": 4.4, "stroke-linecap": "round", "stroke-linejoin": "round" }));
+  });
+  paths.forEach((d) => {
+    g.appendChild(ns_el("path", { d, fill: "none", stroke: "#D9B65C", "stroke-width": 2.6, "stroke-linecap": "round", "stroke-linejoin": "round" }));
+  });
+  return g;
+}
+
 function flashJackSwap(svg, board, swapInfo) {
   const ns = "http://www.w3.org/2000/svg";
   const g = document.createElementNS(ns, "g");
@@ -4535,19 +4570,13 @@ function flashJackSwap(svg, board, swapInfo) {
   const pb = cellForColor(board, swapInfo.b.color, swapInfo.b.to);
   const R = board.cellRadiusMm;
 
-  // a bold gold label at the midpoint, plus growing/fading rings on both
-  // landing spots — timed to appear right as the pawns finish arcing into
-  // place, so the swap reads as unmistakable rather than a quiet snap.
-  const midX = (pa.x + pb.x) / 2, midY = (pa.y + pb.y) / 2;
-  const badge = ns_el("text", {
-    x: midX, y: midY, "text-anchor": "middle", "dominant-baseline": "middle",
-    "font-size": R * 1.1, "font-family": "sans-serif",
-  });
-  badge.textContent = "⇄";
-  badge.setAttribute("fill", "#D9B65C");
-  badge.setAttribute("stroke", "#3A2B22");
-  badge.setAttribute("stroke-width", "1.2");
-  g.appendChild(badge);
+  // L'icona di scambio va al centro del tabellone (non più al midpoint
+  // tra le due pedine, spesso fuori mano/vicino a un bordo) — così è
+  // sempre nello stesso punto, facile da notare a colpo d'occhio; gli
+  // anelli pulsanti restano invece sulle due pedine, per indicare CHI è
+  // stato scambiato.
+  const centerX = board.boardSizeMm / 2, centerY = board.boardSizeMm / 2;
+  g.appendChild(buildJackSwapIcon(centerX, centerY, R * 1.8));
   svg.appendChild(g);
 
   [pa, pb].forEach((p) => {
@@ -4573,7 +4602,7 @@ function flashJackSwap(svg, board, swapInfo) {
 // the swap obvious: you see both pawns cross paths.
 function animateSwapArc(el, fromXY, toXY, genToken) {
   const steps = 10;
-  const durationMs = 26;
+  const durationMs = 40; // 10 passi × 40ms = 0,4s totali (era 26ms, 0,26s)
   const midX = (fromXY.x + toXY.x) / 2;
   const midY = (fromXY.y + toXY.y) / 2 - 34; // arch upward
   let i = 0;
@@ -4771,7 +4800,7 @@ function renderPawns(svg, board, pawns, lastSwap, lastCapture, lastHomeEntry) {
 // Bumped by hand each time a new build is produced — shown in the lobby so
 // it's obvious at a glance whether you're on the latest version, instead
 // of guessing from a stale browser tab or cache.
-const APP_VERSION = "v4.61";
+const APP_VERSION = "v4.66";
 
 let myColor = null;
 let myRoomId = null;
@@ -6992,11 +7021,10 @@ function maybeAdvanceBotTurn(state) {
 function scheduleBotAction(fn) {
   if (botActionTimer) return; // un tentativo è già in programma
   // Pausa "umana" tra una mossa dei bot e la successiva — abbastanza lunga
-  // da poter seguire cosa succede sul tabellone. Era già stata allungata una
-  // volta (0,65-1,5s -> 1,7-3,1s) ma con più bot di fila restava comunque
-  // troppo rapida per leggere mossa/presa/animazione una per una: ora è
-  // ancora più lunga (2,6-4,6s).
-  const delay = 2600 + Math.random() * 2000; // 2,6s – 4,6s
+  // da poter seguire cosa succede sul tabellone. Era già stata allungata
+  // due volte (0,65-1,5s -> 1,7-3,1s -> 2,6-4,6s) ma su richiesta esplicita
+  // ora è più corta di prima (1,5-2,5s), per un ritmo più svelto.
+  const delay = 1500 + Math.random() * 1000; // 1,5s – 2,5s
   botActionTimer = setTimeout(() => {
     botActionTimer = null;
     fn().catch((e) => console.error("bot:", e));
