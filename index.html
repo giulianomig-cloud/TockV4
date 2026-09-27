@@ -245,6 +245,41 @@ h1 { font-size: 1.4rem; margin: 0 0 4px; color: var(--ink); }
 #room-input:focus, #name-input:focus { outline: 2px solid var(--gold); outline-offset: 1px; }
 #room-input { text-transform: uppercase; }
 
+/* Autocomplete della rubrica giocatori (v5): elenco a discesa che filtra
+   mentre si digita, agganciato subito sotto il campo nome. position:
+   relative sul wrapper + absolute sulla lista, così non sposta il resto
+   della schermata quando appare/scompare. */
+.name-autocomplete-wrap { position: relative; }
+.name-autocomplete-list {
+  position: absolute;
+  left: 0; right: 0; top: calc(100% - 4px);
+  z-index: 20;
+  background: var(--panel);
+  border: 1.5px solid var(--panel-border);
+  border-radius: 14px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+  overflow: hidden;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.name-autocomplete-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 11px 16px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--ink);
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--panel-border);
+  cursor: pointer;
+}
+.name-autocomplete-item:last-child { border-bottom: none; }
+.name-autocomplete-item:hover, .name-autocomplete-item:focus { background: var(--panel-2, rgba(0,0,0,0.04)); }
+:root[data-theme="dark"] .name-autocomplete-item:hover,
+:root[data-theme="dark"] .name-autocomplete-item:focus { background: #3A2F22; }
+
 /* Squadre raggruppate visivamente: le due pedine dello stesso team stanno
    nello stesso riquadro tratteggiato, con un badge "VS" al centro tra i
    due riquadri — così si capisce subito chi gioca con chi. */
@@ -774,6 +809,26 @@ button.danger:active {
 }
 .icon-btn:hover { background: #F3EBD8; border-color: var(--gold); }
 .icon-btn-muted { background: #F3EBD8; border-color: #C99A3A; }
+/* Pannello debug con le mani di tutti i colori (vedi renderHandsDebugPanel)
+   — fissato in basso, sopra tutto il resto ma sotto i fogli a comparsa. */
+#hands-debug-panel {
+  position: fixed;
+  left: 8px;
+  right: 8px;
+  bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+  z-index: 500;
+  background: rgba(30, 26, 20, 0.92);
+  color: #F3EBD8;
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-size: 0.78rem;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.35);
+  pointer-events: none;
+}
+.hands-debug-title { font-weight: 800; margin-bottom: 4px; opacity: 0.85; }
+.hands-debug-row { display: flex; gap: 8px; align-items: baseline; padding: 1px 0; }
+.hands-debug-color { font-weight: 800; min-width: 60px; flex-shrink: 0; }
+.hands-debug-cards { font-family: monospace; opacity: 0.95; word-break: break-word; }
 /* Coppia di frecce "mossa precedente/successiva" per rivedere più di una
    mossa indietro (vedi stepReplay) — un'unica capsula invece di due cerchi
    separati, così occupa meno posto nella barra in alto già affollata di
@@ -3561,6 +3616,97 @@ function roomRef(roomId) {
   return db.ref("games/" + roomId);
 }
 
+// ---------------- Rubrica giocatori (v5) -----------------------------
+//
+// Identità persistente del giocatore, condivisa tra tutti i device (non
+// più solo il claimToken locale per-room-per-colore) — vedi
+// docs/v5-roadmap.md, sezione "Identità dei giocatori". Si costruisce da
+// sola: il primo utilizzo di un nome crea la voce, le volte successive
+// (anche da device diversi) si riusa quella esistente invece di crearne
+// una nuova. Nessuna UI di modifica/cancellazione per ora (voluto: eventi
+// rari, si sistemano a mano sul database se capita).
+
+function playersRef() {
+  return db.ref("players");
+}
+
+// Normalizzazione usata SOLO per il confronto tra nomi (case-insensitive,
+// spazi extra ignorati) — il nome effettivamente salvato/mostrato resta
+// quello scritto la prima volta, con la sua capitalizzazione originale.
+function normalizeNameForMatch(name) {
+  return (name || "").trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+// Cache in memoria dell'intera rubrica, caricata una volta per schermata
+// (elenco non pensato per crescere a migliaia di voci) e usata per
+// l'autocomplete lato client — non è la fonte di verità: la creazione
+// vera e propria (resolvePlayerName) rilegge sempre da Firebase, per non
+// generare doppioni se due device scelgono lo stesso nome nello stesso
+// istante.
+let _rubricaCache = null; // { [playerId]: { nome, creatoIl } }
+
+async function loadRubrica() {
+  try {
+    const snap = await playersRef().get();
+    _rubricaCache = snap.val() || {};
+  } catch (e) {
+    _rubricaCache = _rubricaCache || {}; // offline/errore: l'autocomplete resta solo senza suggerimenti
+  }
+  return _rubricaCache;
+}
+
+// Voci della rubrica il cui nome inizia con `prefix` (case-insensitive) —
+// usata per riempire il menu a discesa dell'autocomplete mentre si digita.
+function rubricaMatches(prefix) {
+  const norm = normalizeNameForMatch(prefix);
+  if (!norm || !_rubricaCache) return [];
+  return Object.entries(_rubricaCache)
+    .filter(([, p]) => p && p.nome && normalizeNameForMatch(p.nome).startsWith(norm))
+    .map(([id, p]) => ({ id, nome: p.nome }))
+    .sort((a, b) => a.nome.localeCompare(b.nome, "it"))
+    .slice(0, 8);
+}
+
+// Get-or-create: normalizza il nome scritto, cerca una voce esistente che
+// corrisponda (case-insensitive, spazi extra ignorati) e la riusa così
+// com'è; altrimenti ne crea una nuova. Rilegge SEMPRE da Firebase (non
+// dalla sola cache) prima di creare, per evitare doppioni quando due
+// device scrivono lo stesso nome nuovo nello stesso momento.
+async function resolvePlayerName(rawName) {
+  const norm = normalizeNameForMatch(rawName);
+  const snap = await playersRef().get();
+  const all = snap.val() || {};
+  for (const [id, p] of Object.entries(all)) {
+    if (p && p.nome && normalizeNameForMatch(p.nome) === norm) {
+      _rubricaCache = all;
+      return { id, nome: p.nome };
+    }
+  }
+  const nome = (rawName || "").trim().replace(/\s+/g, " ");
+  const ref = playersRef().push();
+  const entry = { nome, creatoIl: Date.now() };
+  await ref.set(entry);
+  all[ref.key] = entry;
+  _rubricaCache = all;
+  return { id: ref.key, nome };
+}
+
+// Scorciatoia locale per device (NON fonte di verità, solo comodità: non
+// dover riselezionare il proprio nome ogni volta sullo stesso telefono).
+function getSavedPlayerShortcut() {
+  try {
+    const raw = localStorage.getItem("tock-player");
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) {
+    return null;
+  }
+}
+function savePlayerShortcut(id, nome) {
+  try {
+    localStorage.setItem("tock-player", JSON.stringify({ id, nome }));
+  } catch (e) {}
+}
+
 function watchRoom(roomId, callback) {
   roomRef(roomId).on("value", (snap) => {
     callback(normalizeState(snap.val()));
@@ -4840,11 +4986,12 @@ function renderPawns(svg, board, pawns, lastSwap, lastCapture, lastHomeEntry) {
 // Bumped by hand each time a new build is produced — shown in the lobby so
 // it's obvious at a glance whether you're on the latest version, instead
 // of guessing from a stale browser tab or cache.
-const APP_VERSION = "v4.74";
+const APP_VERSION = "v4.78";
 
 let myColor = null;
 let myRoomId = null;
 let myName = null;
+let myPlayerId = null; // id della voce in rubrica (players/{id}) — null se non risolto (es. nome vuoto)
 let myToken = null; // usato solo nel flusso "estrazione", prima che il colore sia deciso
 let boardSvg = null;
 let currentState = null;
@@ -5240,16 +5387,66 @@ function stopLobbyListener() {
   }
 }
 
+// Campo nome con autocomplete sulla rubrica giocatori (v5): un wrapper
+// {wrap, input} — `wrap` va appeso al posto del vecchio `input` semplice,
+// `input` è lo stesso elemento <input> di sempre (stesso id, stesso modo
+// di leggerne il valore in fase di submit). La lista a discesa è solo un
+// aiuto per non dover riscrivere il proprio nome ogni volta: la
+// canonicalizzazione vera (trova-o-crea in rubrica) avviene comunque al
+// momento dell'invio, tramite resolvePlayerName — quindi funziona
+// correttamente anche se l'utente ignora i suggerimenti e scrive a mano.
+function buildRubricaNameInput(inputId, initialValue) {
+  const input = el("input", { id: inputId, placeholder: "il tuo nome", value: initialValue || "", autocomplete: "off" });
+  const list = el("div", { class: "name-autocomplete-list", style: "display:none;" });
+  const renderList = () => {
+    const matches = rubricaMatches(input.value);
+    list.innerHTML = "";
+    if (!matches.length) {
+      list.style.display = "none";
+      return;
+    }
+    matches.forEach((m) => {
+      list.appendChild(
+        el(
+          "button",
+          {
+            type: "button",
+            class: "name-autocomplete-item",
+            // mousedown (non click) così scatta PRIMA del blur dell'input,
+            // altrimenti il blur nasconde la lista un attimo prima che il
+            // click ci arrivi e la selezione sembra "non funzionare".
+            onmousedown: (e) => {
+              e.preventDefault();
+              input.value = m.nome;
+              list.style.display = "none";
+            },
+          },
+          m.nome
+        )
+      );
+    });
+    list.style.display = "";
+  };
+  input.addEventListener("input", renderList);
+  input.addEventListener("focus", renderList);
+  input.addEventListener("blur", () => {
+    list.style.display = "none";
+  });
+  // Carica la rubrica una volta per schermata (fire-and-forget: se non è
+  // ancora pronta quando l'utente inizia a digitare, semplicemente non
+  // compaiono suggerimenti finché non arriva — non blocca la digitazione).
+  loadRubrica();
+  const wrap = el("div", { class: "name-autocomplete-wrap" }, input, list);
+  return { wrap, input };
+}
+
 function renderManualLobby(roomId, existingPlayers) {
   const root = $("#app");
   root.innerHTML = "";
   stopLobbyListener();
 
-  const nameInput = el("input", {
-    id: "name-input",
-    placeholder: "il tuo nome",
-    value: myName || "",
-  });
+  const savedPlayer = getSavedPlayerShortcut();
+  const nameField = buildRubricaNameInput("name-input", myName || (savedPlayer && savedPlayer.nome) || "");
 
   // Passi numerati (1-2-3): guidano l'occhio nell'ordine giusto invece di
   // lasciare nome/colore/pulsante alla stessa altezza visiva. "Entra nella
@@ -5291,7 +5488,7 @@ function renderManualLobby(roomId, existingPlayers) {
       ),
       el("p", { class: "muted" }, "Inserisci il tuo nome e scegli il tuo colore."),
       stepLabel(1, "Il tuo nome"),
-      nameInput,
+      nameField.wrap,
       stepLabel(2, "Scegli il tuo colore"),
       el("div", { id: "color-row-wrap" }), // riempito/aggiornato da renderLobbyColorSection
       stepLabel(3, "Entra in partita"),
@@ -5592,10 +5789,23 @@ function selectColor(c) {
 
 async function joinManualRoom(roomId) {
   unlockAudio();
-  const name = $("#name-input").value.trim();
+  const typed = $("#name-input").value.trim();
   if (!myColor) return showToast("Scegli un colore.");
   myRoomId = roomId;
-  myName = name || colorLabel(myColor);
+  // Rubrica (v5): un nome scritto passa da trova-o-crea, così due persone
+  // che scrivono lo stesso nome (anche con maiuscole/spazi diversi)
+  // finiscono sulla stessa voce condivisa invece di crearne una a testa.
+  // Se il campo è vuoto si tiene il comportamento di sempre (nome = colore,
+  // nessuna voce di rubrica creata per un "nome" che non esiste).
+  if (typed) {
+    const player = await resolvePlayerName(typed);
+    myName = player.nome;
+    myPlayerId = player.id;
+    savePlayerShortcut(player.id, player.nome);
+  } else {
+    myName = colorLabel(myColor);
+    myPlayerId = null;
+  }
 
   // FONDAMENTALE: va staccato PRIMA di scrivere su Firebase, non dopo.
   // L'ascolto in tempo reale della lobby (aggiunto in v3.4) reagisce anche
@@ -5909,14 +6119,15 @@ function getOrCreateRoomToken(roomId) {
 function renderDraftNameScreen(roomId) {
   const root = $("#app");
   root.innerHTML = "";
-  const nameInput = el("input", { id: "name-input", placeholder: "il tuo nome", value: myName || "" });
+  const savedPlayer = getSavedPlayerShortcut();
+  const nameField = buildRubricaNameInput("name-input", myName || (savedPlayer && savedPlayer.nome) || "");
   root.appendChild(
     el(
       "div",
       { class: "lobby-card" },
       el("h1", {}, "Tock"),
       el("p", { class: "muted" }, `Stanza ${roomId} — modalità estrazione a sorte: qui non scegli il colore, solo il nome.`),
-      nameInput,
+      nameField.wrap,
       el("button", { id: "join-btn", class: "primary", onclick: () => joinDraftRoom(roomId) }, "Entra nella stanza", forwardArrowIcon()),
       el("button", { class: "text-link-btn", style: "margin-top:10px;", onclick: renderLobby }, backChevronIcon(), "Cambia stanza"),
       homeScreenHint()
@@ -5926,10 +6137,14 @@ function renderDraftNameScreen(roomId) {
 
 async function joinDraftRoom(roomId) {
   unlockAudio();
-  const name = $("#name-input").value.trim();
-  if (!name) return showToast("Inserisci il tuo nome.");
+  const typed = $("#name-input").value.trim();
+  if (!typed) return showToast("Inserisci il tuo nome.");
+  // Rubrica (v5): vedi il commento gemello in joinManualRoom.
+  const player = await resolvePlayerName(typed);
   myRoomId = roomId;
-  myName = name;
+  myName = player.nome;
+  myPlayerId = player.id;
+  savePlayerShortcut(player.id, player.nome);
   myToken = getOrCreateRoomToken(roomId);
 
   // Un'UNICA transazione atomica (leggi-controlla-scrivi), non più un
@@ -6604,6 +6819,16 @@ function renderGameShell() {
               ["line", { x1: 3, y1: 12, x2: 3.01, y2: 12 }],
               ["line", { x1: 3, y1: 18, x2: 3.01, y2: 18 }],
             ])
+          ),
+          el(
+            "button",
+            {
+              id: "hands-debug-toggle-btn",
+              class: "icon-btn" + (handsDebugVisible ? " icon-btn-muted" : ""),
+              "aria-label": handsDebugVisible ? "Nascondi mani (debug)" : "Mostra mani (debug)",
+              onclick: toggleHandsDebug,
+            },
+            "🃏"
           ),
           el(
             "div",
@@ -7379,6 +7604,12 @@ var BOT_WEIGHTS = {
   // prossime pedine in arrivo). Una minaccia reale su un'altra pedina pesa
   // comunque molto di più (vedi threatPenalty/threatBonus) e continua a
   // prevalere quando conta davvero.
+  evalProtectedBase: 5, // bonus per una pedina ferma sulla propria
+  // casella-base non ancora "girata": lì è protetta (non mangiabile, non
+  // selezionabile dal Jack — vedi isPawnProtected). Prima botEvaluateBoard
+  // non lo sapeva e la trattava come una pedina in gioco qualsiasi, quindi
+  // in una ripartizione del 7 poteva spostarla fuori dalla base senza
+  // nessun motivo per preferire lasciarla lì al sicuro.
   threatPenalty: 1.5,
   threatBonus: 0.9,
   // botCoordinationAdjustment: quanto conta salvare una pedina minacciata
@@ -7908,7 +8139,17 @@ function botEvaluateBoard(pawns, lapped, forTeam) {
       let val;
       if (pos === -1) val = BOT_WEIGHTS.evalBase; // in base: meglio essere in gioco
       else if (pos >= 1000) val = BOT_WEIGHTS.evalHomeBase + (pos - 1000) * BOT_WEIGHTS.evalHomeStep; // in casa: sempre molto meglio
-      else val = stepsFromOwnBase(c, pos, lapped && lapped[c] && lapped[c][i]);
+      else {
+        val = stepsFromOwnBase(c, pos, lapped && lapped[c] && lapped[c][i]);
+        // Ferma esattamente sulla propria casella-base e non ancora girata:
+        // è protetta (isPawnProtected) — non mangiabile, non selezionabile
+        // dal Jack. Un piccolo bonus dà al bot un motivo per non spostarla
+        // via da lì senza un reale vantaggio, invece di trattarla come una
+        // pedina in gioco qualunque.
+        if (pos === BOARD.baseIndex[c] && !(lapped && lapped[c] && lapped[c][i])) {
+          val += BOT_WEIGHTS.evalProtectedBase;
+        }
+      }
       score += sign * val;
     }
   }
@@ -7960,6 +8201,7 @@ function onStateChange(state) {
   renderHand(state);
   renderChat(state);
   renderLog(state);
+  renderHandsDebugPanel(state);
   if (state.phase === "finished") {
     // Aspetta che l'animazione della mossa finale (l'ultima pedina che
     // scorre in casa) sia visibilmente conclusa prima di mostrare il
@@ -9759,6 +10001,66 @@ function displayLogLine(line) {
   }
   out = out.replace(/\b([2-9]|10|[AKQJ])-(hearts|diamonds|clubs|spades)\b/g, (m, rank, suit) => rank + OLD_SUIT_SYMBOL[suit]);
   return out;
+}
+
+// Pannello "debug" con le mani di tutti e 4 i colori in tempo reale (bot
+// compresi) — per indagare a occhio le mosse dei bot mentre giocano,
+// invece di dover ricostruire tutto a posteriori dal registro scaricato
+// (che non riporta le mani). Solo locale: persiste in localStorage così
+// resta aperto tra una schermata e l'altra, ma nessun altro client lo
+// vede — ognuno decide per sé se tenerlo acceso.
+let handsDebugVisible = false;
+try { handsDebugVisible = localStorage.getItem("tock-hands-debug") === "1"; } catch (e) {}
+
+// Codice richiesto per ACCENDERE il pannello (non per spegnerlo) — un
+// deterrente per i giocatori occasionali, non una vera sicurezza: chiunque
+// guardasse il sorgente della pagina lo troverebbe comunque. Cambialo qui
+// se vuoi un codice diverso in futuro.
+const HANDS_DEBUG_PIN = "2510";
+
+function toggleHandsDebug() {
+  if (!handsDebugVisible) {
+    const entered = window.prompt("Codice per il pannello debug:");
+    if (entered === null) return; // annullato: non toccare nulla
+    if (entered !== HANDS_DEBUG_PIN) {
+      showToast("Codice errato.");
+      return;
+    }
+  }
+  handsDebugVisible = !handsDebugVisible;
+  try { localStorage.setItem("tock-hands-debug", handsDebugVisible ? "1" : "0"); } catch (e) {}
+  const btn = document.getElementById("hands-debug-toggle-btn");
+  if (btn) {
+    btn.classList.toggle("icon-btn-muted", handsDebugVisible);
+    btn.setAttribute("aria-label", handsDebugVisible ? "Nascondi mani (debug)" : "Mostra mani (debug)");
+  }
+  renderHandsDebugPanel(currentState);
+}
+
+function renderHandsDebugPanel(state) {
+  let panel = document.getElementById("hands-debug-panel");
+  if (!handsDebugVisible || !state || !state.hands) {
+    if (panel) panel.remove();
+    return;
+  }
+  if (!panel) {
+    panel = document.createElement("div");
+    panel.id = "hands-debug-panel";
+    document.body.appendChild(panel);
+  }
+  panel.innerHTML = "";
+  panel.appendChild(el("div", { class: "hands-debug-title" }, "🃏 Mani (debug, solo qui)"));
+  for (const c of COLORS) {
+    const hand = (state.hands[c] || []).map((card) => cardLog(card)).join("  ");
+    panel.appendChild(
+      el(
+        "div",
+        { class: "hands-debug-row" },
+        el("span", { class: "hands-debug-color", style: `color:${BASE_COL[c]};` }, colorLabel(c) + (c === state.turnColor ? " ▶" : "")),
+        el("span", { class: "hands-debug-cards" }, hand || "(vuota)")
+      )
+    );
+  }
 }
 
 let logExpanded = false;
