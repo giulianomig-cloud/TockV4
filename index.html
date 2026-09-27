@@ -4696,11 +4696,17 @@ function cellForColor(board, color, pos) {
   return board.loopCells[pos];
 }
 
+// Restituisce (in ms) la durata della PIÙ LUNGA animazione avviata da questa
+// chiamata — usata da onStateChange per ritardare il banner di vittoria
+// finché la pedina non è visibilmente arrivata in casa, invece di farlo
+// comparire subito sopra la mossa finale ancora in corso (segnalato: "fai
+// vedere prima l'entrata e poi il banner, adesso copre la mossa finale").
 function renderPawns(svg, board, pawns, lastSwap, lastCapture, lastHomeEntry) {
   const ns = "http://www.w3.org/2000/svg";
   const R = board.cellRadiusMm;
   const capR = R - 1;
   const stepMs = 170;
+  let animDurationMs = 0;
 
   // Un evento (scambio/mangiata/arrivo in casa) va animato SOLO se è successo
   // mentre questo client stava già guardando la partita, non se era già
@@ -4737,6 +4743,7 @@ function renderPawns(svg, board, pawns, lastSwap, lastCapture, lastHomeEntry) {
     _pawnAnimState.lastHomeEntryId = lastHomeEntry.id;
     if (isFreshEvent) {
       flashHomeEntry(svg, board, lastHomeEntry.color, lastHomeEntry.pos - 1000);
+      animDurationMs = Math.max(animDurationMs, 20 + 9 * 60); // vedi flashHomeEntry
     }
   }
   _pawnAnimState.primed = true;
@@ -4793,10 +4800,12 @@ function renderPawns(svg, board, pawns, lastSwap, lastCapture, lastHomeEntry) {
       if (isSwapPart) {
         const fromXY = cellForColor(board, color, prevPos);
         animateSwapArc(outer, fromXY, target, gen);
+        animDurationMs = Math.max(animDurationMs, 10 * 40); // vedi animateSwapArc
       } else {
         const path = pathForAnimation(color, prevPos, pos);
         if (path && path.length > 0) {
           animateAlongPath(outer, board, path, color, stepMs, gen);
+          animDurationMs = Math.max(animDurationMs, path.length * stepMs);
         } else {
           outer.setAttribute("transform", `translate(${target.x},${target.y})`);
         }
@@ -4814,6 +4823,8 @@ function renderPawns(svg, board, pawns, lastSwap, lastCapture, lastHomeEntry) {
       delete _pawnAnimState.positions[key];
     }
   }
+
+  return animDurationMs;
 }
 
 </script>
@@ -4825,7 +4836,7 @@ function renderPawns(svg, board, pawns, lastSwap, lastCapture, lastHomeEntry) {
 // Bumped by hand each time a new build is produced — shown in the lobby so
 // it's obvious at a glance whether you're on the latest version, instead
 // of guessing from a stale browser tab or cache.
-const APP_VERSION = "v4.69";
+const APP_VERSION = "v4.71";
 
 let myColor = null;
 let myRoomId = null;
@@ -7913,6 +7924,11 @@ function botEvaluateBoard(pawns, lapped, forTeam) {
   return score;
 }
 
+// Timer del banner di vittoria (vedi onStateChange) — tenuto a livello di
+// modulo così una chiamata successiva può annullare un ritardo ancora in
+// sospeso invece di accumularne più di uno.
+let _winBannerTimer = null;
+
 function onStateChange(state) {
   if (!state) return;
   currentState = state;
@@ -7923,15 +7939,26 @@ function onStateChange(state) {
   renderDealerDrawScreen(state);
   renderStartControls(state);
   renderExchangeControls(state);
-  renderPawns(boardSvg, BOARD, state.pawns, state.lastSwap, state.lastCapture, state.lastHomeEntry);
+  const pawnAnimMs = renderPawns(boardSvg, BOARD, state.pawns, state.lastSwap, state.lastCapture, state.lastHomeEntry);
   renderTurnIndicator(state);
   renderPlayerStatus(state);
   renderHand(state);
   renderChat(state);
   renderLog(state);
   if (state.phase === "finished") {
-    renderWinBanner(state);
+    // Aspetta che l'animazione della mossa finale (l'ultima pedina che
+    // scorre in casa) sia visibilmente conclusa prima di mostrare il
+    // banner — altrimenti il banner, che copre il tabellone, appariva
+    // subito sopra la mossa ancora in corso (segnalato: "fai vedere prima
+    // l'entrata e poi il banner"). pawnAnimMs è 0 quando non c'è
+    // un'animazione fresca da aspettare (es. si riapre l'app su una
+    // partita già conclusa), quindi in quel caso il banner compare subito.
+    clearTimeout(_winBannerTimer);
+    _winBannerTimer = setTimeout(() => {
+      if (currentState && currentState.phase === "finished") renderWinBanner(currentState);
+    }, pawnAnimMs + (pawnAnimMs > 0 ? 250 : 0));
   } else {
+    clearTimeout(_winBannerTimer);
     // The banner is prepended straight into #app (outside the normal
     // per-section re-render), so once the phase leaves "finished" — e.g.
     // "Nuova partita" — nothing else ever takes it back down. Remove it
@@ -9240,9 +9267,18 @@ async function toggleJackPick(active, card, target) {
 // dettaglio interno che al giocatore non dice niente (richiesto di
 // toglierlo) — l'icona a pallini davanti alla riga identifica già di
 // quale pedina si tratta, quindi basta "in gioco".
-function sevenRowLabel(pos) {
+function sevenRowLabel(p, val) {
+  const pos = p.pos;
   if (pos === -1) return "Base → entra in gioco";
   if (pos >= 1000) return `In casa (${pos - 1000 + 1}ª casella) → prosegue`;
+  // In gioco sul giro principale: se ci sono già passi assegnati, verifica
+  // se QUESTA allocazione la fa entrare in casa (non solo "prosegue" sul
+  // giro) — altrimenti l'etichetta resta generica finché non si assegna
+  // almeno un passo (segnalato: "non scrive entra in casa ma solo passa").
+  if (val > 0) {
+    const path = sevenSinglePawnPath(currentState, p.color, pos, val, true, hasLapped(currentState, p.color, p.pawnIndex));
+    if (path && path[path.length - 1] >= 1000) return "In gioco → entra in casa";
+  }
   return "In gioco → prosegue";
 }
 
@@ -9352,7 +9388,7 @@ function renderSevenSplitter(active, card, ownPawns) {
       "div",
       { class: "seven-row" + (val > 0 ? " has-steps" : ""), id: "seven-row-" + key },
       pipIcon(p.color, p.pawnIndex, 34),
-      el("div", { class: "seven-row-text" }, sevenRowLabel(p.pos)),
+      el("div", { class: "seven-row-text", id: "seven-row-text-" + key }, sevenRowLabel(p, val)),
       el("button", { class: "seven-step-btn", onclick: () => adjustSeven(active, card, ownPawns, p.color, p.pawnIndex, -1) }, "−"),
       el("span", { class: "seven-val", id: "seven-val-" + key }, String(val)),
       el("button", { class: "seven-step-btn", onclick: () => adjustSeven(active, card, ownPawns, p.color, p.pawnIndex, 1) }, "+")
@@ -9426,6 +9462,11 @@ function patchSevenSplitterNumbers(total, remaining, keys) {
     if (valEl) valEl.textContent = String(val);
     const rowEl = document.getElementById("seven-row-" + key);
     if (rowEl) rowEl.classList.toggle("has-steps", val > 0);
+    const sep = key.indexOf(":");
+    const color = key.slice(0, sep);
+    const pawnIndex = parseInt(key.slice(sep + 1), 10);
+    const textEl = document.getElementById("seven-row-text-" + key);
+    if (textEl) textEl.textContent = sevenRowLabel({ color, pawnIndex, pos: currentState.pawns[color][pawnIndex] }, val);
   });
   const confirmBtn = document.getElementById("seven-confirm-btn");
   if (confirmBtn) {
