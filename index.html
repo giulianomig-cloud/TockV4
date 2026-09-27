@@ -993,6 +993,13 @@ button.danger:active {
 }
 .mini-pawns { width: 68px; height: 16px; flex-shrink: 0; }
 .dealer-icon { width: 20px; height: 20px; flex-shrink: 0; }
+/* Asso di Cuori: la carta che si pesca davvero per diventare mazziere
+   (dealAndRevealDealer), non un generico mazzetto di carte — più chiaro
+   a colpo d'occhio e coerente con la regola vera. */
+.dealer-icon .dc-bg { fill: var(--gold, #C99A3A); }
+.dealer-icon .dc-card { fill: #FFFFFF; stroke: #6B4E17; stroke-width: 1.5; }
+.dealer-icon .dc-heart { fill: #C1414B; }
+.dealer-icon .dc-letter { fill: #C1414B; font-family: "Plus Jakarta Sans", sans-serif; font-weight: 800; }
 
 .hand-row {
   display: flex;
@@ -4739,7 +4746,7 @@ function renderPawns(svg, board, pawns, lastSwap, lastCapture, lastHomeEntry) {
 // Bumped by hand each time a new build is produced — shown in the lobby so
 // it's obvious at a glance whether you're on the latest version, instead
 // of guessing from a stale browser tab or cache.
-const APP_VERSION = "v4.58";
+const APP_VERSION = "v4.59";
 
 let myColor = null;
 let myRoomId = null;
@@ -8166,45 +8173,51 @@ function renderPlayerStatus(state) {
   bottomWrap.appendChild(buildPlayer(STATUS_BOTTOM_ORDER[1], true));
 }
 
-// Small hand-drawn "stack of cards" icon marking the current dealer —
-// clearer at a glance than a single playing-card emoji.
-// Prima erano solo cartoncini bianchi su sfondo bianco/crema — quasi
-// invisibili a questa dimensione (segnalato: "poco evidente"). Ora un
-// distintivo pieno in oro (stesso linguaggio degli altri badge tondi
-// dell'app, es. exchange-done-badge) con le cartine bianche sopra, così
-// il contrasto lo rende leggibile a colpo d'occhio anche piccolissimo.
+// Icona del mazziere: l'Asso di Cuori, la carta che si pesca davvero per
+// diventare mazziere (vedi dealAndRevealDereal/dealAndRevealDealer) — prima
+// era un generico mazzetto di 3 cartine, che non c'entrava con la regola
+// reale del gioco. Distintivo pieno in oro (stesso linguaggio degli altri
+// badge tondi dell'app, es. exchange-done-badge) con la carta bianca sopra,
+// leggibile a colpo d'occhio anche piccolissimo.
 function dealerIcon() {
   const ns = "http://www.w3.org/2000/svg";
   const svg = document.createElementNS(ns, "svg");
   svg.setAttribute("viewBox", "0 0 40 40");
   svg.setAttribute("class", "dealer-icon");
   const title = document.createElementNS(ns, "title");
-  title.textContent = "Mazziere";
+  title.textContent = "Mazziere (Asso di Cuori)";
   svg.appendChild(title);
   const bg = document.createElementNS(ns, "circle");
+  bg.setAttribute("class", "dc-bg");
   bg.setAttribute("cx", 20);
   bg.setAttribute("cy", 20);
   bg.setAttribute("r", 20);
-  bg.setAttribute("fill", "var(--gold, #C99A3A)");
   svg.appendChild(bg);
+  const card = document.createElementNS(ns, "rect");
+  card.setAttribute("class", "dc-card");
+  card.setAttribute("x", 11);
+  card.setAttribute("y", 7);
+  card.setAttribute("width", 18);
+  card.setAttribute("height", 24);
+  card.setAttribute("rx", 3);
+  card.setAttribute("transform", "rotate(-6 20 20)");
+  svg.appendChild(card);
   const g = document.createElementNS(ns, "g");
-  g.setAttribute("transform", "translate(20,21)");
-  const card = (x, y, rot) => {
-    const r = document.createElementNS(ns, "rect");
-    r.setAttribute("x", x);
-    r.setAttribute("y", y);
-    r.setAttribute("width", 15);
-    r.setAttribute("height", 19);
-    r.setAttribute("rx", 2.5);
-    r.setAttribute("fill", "#FFFFFF");
-    r.setAttribute("stroke", "#6B4E17");
-    r.setAttribute("stroke-width", 1.6);
-    r.setAttribute("transform", `rotate(${rot})`);
-    return r;
-  };
-  g.appendChild(card(-10.5, -8.5, -13));
-  g.appendChild(card(-7.5, -9.5, 0));
-  g.appendChild(card(-4.5, -8.5, 13));
+  g.setAttribute("transform", "rotate(-6 20 20)");
+  const letter = document.createElementNS(ns, "text");
+  letter.setAttribute("class", "dc-letter");
+  letter.setAttribute("x", 13.6);
+  letter.setAttribute("y", 15.5);
+  letter.setAttribute("font-size", 7.5);
+  letter.textContent = "A";
+  g.appendChild(letter);
+  const heart = document.createElementNS(ns, "path");
+  heart.setAttribute("class", "dc-heart");
+  heart.setAttribute(
+    "d",
+    "M20 27.5c-3.6-2.6-5.8-4.9-5.8-7.6 0-2 1.5-3.4 3.3-3.4 1.1 0 2 .5 2.5 1.4.5-.9 1.4-1.4 2.5-1.4 1.8 0 3.3 1.4 3.3 3.4 0 2.7-2.2 5-5.8 7.6z"
+  );
+  g.appendChild(heart);
   svg.appendChild(g);
   return svg;
 }
