@@ -115,6 +115,13 @@ body {
   background: var(--cream);
   color: var(--ink);
 }
+/* Il tocco su mobile disegna di suo un rettangolo grigio traslucido sopra
+   il bottone toccato (il default del browser) — oltre a essere brutto,
+   in scuro si sommava allo sfondo chiaro di alcuni :hover (vedi sopra) e
+   contribuiva a rendere illeggibile il bottone appena premuto. Meglio
+   disattivarlo e affidarsi solo ai nostri :hover/:active già pensati per
+   ogni tema. */
+button, a, [role="button"] { -webkit-tap-highlight-color: transparent; }
 
 /* min-height: 100vh fa "saltare" leggermente il contenuto (es. il
    tabellone) quando si interagisce con un elemento fisso in basso come il
@@ -1595,6 +1602,17 @@ button.secondary.selected {
   --team-a-gradient: linear-gradient(120deg, #3A2226 0%, #362C18 100%);
   --team-b-gradient: linear-gradient(120deg, #22352A 0%, #22303F 100%);
 }
+/* .icon-btn/.icon-btn-half/.sound-test-btn avevano un solo :hover con
+   sfondo crema chiaro fisso (#F3EBD8), pensato solo per il tema chiaro.
+   Su mobile il tocco spesso fa restare il bottone "agganciato" in questo
+   stato :hover finché non si tocca altrove — in scuro il testo (var(--ink),
+   chiaro in questo tema) finiva quasi invisibile su quello stesso sfondo
+   chiaro (segnalato: "i tasti premuti non sono visibili"). Qui lo sfondo
+   del tocco diventa un marrone scuro coerente col pannello, non più il
+   crema fisso. */
+:root[data-theme="dark"] .icon-btn:hover { background: #3A2F22; border-color: var(--gold); }
+:root[data-theme="dark"] .icon-btn-half:hover { background: #3A2F22; }
+:root[data-theme="dark"] .sound-test-btn:hover { background: #3A2F22; border-color: var(--gold); }
 :root[data-theme="dark"] .color-cell.cc-red.cc-free { border-color: #4A3230; background: #241C1B; }
 :root[data-theme="dark"] .color-cell.cc-green.cc-free { border-color: #33463A; background: #1C2420; }
 :root[data-theme="dark"] .color-cell.cc-yellow.cc-free { border-color: #473B22; background: #241F16; }
@@ -4807,7 +4825,7 @@ function renderPawns(svg, board, pawns, lastSwap, lastCapture, lastHomeEntry) {
 // Bumped by hand each time a new build is produced — shown in the lobby so
 // it's obvious at a glance whether you're on the latest version, instead
 // of guessing from a stale browser tab or cache.
-const APP_VERSION = "v4.68";
+const APP_VERSION = "v4.69";
 
 let myColor = null;
 let myRoomId = null;
