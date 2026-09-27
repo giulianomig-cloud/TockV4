@@ -1618,15 +1618,15 @@ button.secondary.selected {
   border-color: #3A2D1C;
   box-shadow: inset 0 2px 10px rgba(0,0,0,0.35), 0 10px 26px -14px rgba(0,0,0,0.5);
 }
-/* L'SVG del tabellone è disegnato una volta sola in JS con colori "legno"
-   fissi (vedi buildBoardSVG) — invece di rigenerare tutti i gradienti per
-   il tema scuro, un velo scuro semi-trasparente ci si sovrappone (sopra
-   celle/linee/basi, ma SOTTO le pedine — che sono aggiunte allo <svg>
-   DOPO questo rect, quindi restano sempre vivide e ben leggibili anche
-   di notte). Opacità 0 in chiaro, visibile solo in scuro. */
-:root[data-theme="dark"] #board-svg { border-color: #1C140C !important; }
-.board-night-overlay { opacity: 0; pointer-events: none; transition: opacity 0.2s ease; }
-:root[data-theme="dark"] .board-night-overlay { opacity: 0.55; }
+/* Prima il tabellone scuro era solo questi stessi colori chiari coperti da
+   un velo scuro semi-trasparente — restava "un chiaro scurito", non un
+   vero legno scuro (segnalato: "non può essere dark anche il tabellone?").
+   Ora buildBoardSVG ridisegna l'intero SVG con una palette scura vera
+   (BOARD_PALETTES.dark) ogni volta che il tema cambia — vedi
+   rebuildBoardForTheme, chiamata da applyTheme — quindi qui non serve più
+   nessun velo/opacità: il colore di sfondo/celle/linee è già quello giusto
+   fin dalla costruzione. Le pedine restano sempre vivide in entrambi i
+   temi (non fanno parte di BOARD_PALETTES). */
 
 /* Interruttore tema (☀/🌙): un pulsante tondo come .icon-btn, messo nella
    home (accanto a "Test suono") e nella barra icone in partita — non un
@@ -3753,23 +3753,57 @@ function ns_el(tag, attrs) {
   return e;
 }
 
+// Due palette per il legno/celle del tabellone: prima il tema scuro era
+// solo un velo semi-trasparente sopra questi stessi colori chiari, che
+// restava sempre "un chiaro scurito" invece di un vero legno scuro
+// (segnalato: "non può essere dark anche il tabellone?"). Ora buildBoardSVG
+// sceglie la palette giusta in base al tema al momento della costruzione —
+// le pedine (cell-<color>, base-<color>, halo, cap-sheen, pawn-gloss) NON
+// sono in questa palette: restano sempre vivide in entrambi i temi, come
+// deciso in precedenza.
+const BOARD_PALETTES = {
+  light: {
+    border: "#3d2a17",
+    bg: ["#F8F1DE", "#EFE1C1", "#E3D0A2"],
+    grainFill: "#3a2412", grainOpacity: 0.14,
+    cellCream: ["#FFFDF7", "#FCF6E9", "#ECE0C4"],
+    cellPlain: ["#F1E7CE", "#E8D9B4", "#D2BD8E"],
+    lineStroke: "#8a6a42", lineOpacity: 0.75,
+    cellBorderBase: "#8a7a5a",
+    cellBorderLighten: 0.35,
+    innerRing: "#140c07", innerRingOpacity: 0.55,
+  },
+  dark: {
+    border: "#0E0906",
+    bg: ["#3A2A18", "#291D10", "#1B130A"],
+    grainFill: "#000000", grainOpacity: 0.22,
+    cellCream: ["#5A4526", "#4A3720", "#382A18"],
+    cellPlain: ["#4F3A1C", "#402E16", "#301F0E"],
+    lineStroke: "#8a6a42", lineOpacity: 0.5,
+    cellBorderBase: "#C9A968",
+    cellBorderLighten: 0.15,
+    innerRing: "#F5E9C8", innerRingOpacity: 0.16,
+  },
+};
+
 function buildBoardSVG(containerEl, board) {
   const S = board.boardSizeMm;
   const R = board.cellRadiusMm;
   const ns = "http://www.w3.org/2000/svg";
+  const pal = BOARD_PALETTES[currentTheme === "dark" ? "dark" : "light"];
   const svg = document.createElementNS(ns, "svg");
   svg.setAttribute("viewBox", `0 0 ${S} ${S}`);
   svg.setAttribute("id", "board-svg");
   svg.style.width = "100%";
   svg.style.height = "auto";
   svg.style.display = "block";
-  svg.style.border = "2px solid #3d2a17";
+  svg.style.border = "2px solid " + pal.border;
   svg.style.boxShadow = "inset 0 0 8px 2px rgba(0,0,0,0.35)";
 
   // ---- defs: gradients for background, bases, cells ----
   const defs = ns_el("defs", {});
   const bg = ns_el("radialGradient", { id: "bg-grad", cx: "40%", cy: "35%", r: "80%" });
-  [["0%", "#F8F1DE"], ["55%", "#EFE1C1"], ["100%", "#E3D0A2"]].forEach(([off, col]) => {
+  [["0%", pal.bg[0]], ["55%", pal.bg[1]], ["100%", pal.bg[2]]].forEach(([off, col]) => {
     bg.appendChild(ns_el("stop", { offset: off, "stop-color": col }));
   });
   defs.appendChild(bg);
@@ -3830,9 +3864,9 @@ function buildBoardSVG(containerEl, board) {
     defs.appendChild(halo);
   }
   const cream = ns_el("radialGradient", { id: "cell-cream", cx: "32%", cy: "28%", r: "78%" });
-  cream.appendChild(ns_el("stop", { offset: "0%", "stop-color": "#FFFDF7" }));
-  cream.appendChild(ns_el("stop", { offset: "45%", "stop-color": "#FCF6E9" }));
-  cream.appendChild(ns_el("stop", { offset: "100%", "stop-color": "#ECE0C4" }));
+  cream.appendChild(ns_el("stop", { offset: "0%", "stop-color": pal.cellCream[0] }));
+  cream.appendChild(ns_el("stop", { offset: "45%", "stop-color": pal.cellCream[1] }));
+  cream.appendChild(ns_el("stop", { offset: "100%", "stop-color": pal.cellCream[2] }));
   defs.appendChild(cream);
 
   // Used only for the plain, walkable loop cells — a recessed "carved
@@ -3842,9 +3876,9 @@ function buildBoardSVG(containerEl, board) {
   // Used for base/marker/home cells — the muted tan tone (matches the
   // normal glossy look, not the recessed style tried earlier).
   const plain = ns_el("radialGradient", { id: "cell-plain", cx: "32%", cy: "28%", r: "78%" });
-  plain.appendChild(ns_el("stop", { offset: "0%", "stop-color": "#F1E7CE" }));
-  plain.appendChild(ns_el("stop", { offset: "50%", "stop-color": "#E8D9B4" }));
-  plain.appendChild(ns_el("stop", { offset: "100%", "stop-color": "#D2BD8E" }));
+  plain.appendChild(ns_el("stop", { offset: "0%", "stop-color": pal.cellPlain[0] }));
+  plain.appendChild(ns_el("stop", { offset: "50%", "stop-color": pal.cellPlain[1] }));
+  plain.appendChild(ns_el("stop", { offset: "100%", "stop-color": pal.cellPlain[2] }));
   defs.appendChild(plain);
 
   const capSheen = ns_el("radialGradient", { id: "cap-sheen", cx: "35%", cy: "28%", r: "75%" });
@@ -3865,13 +3899,13 @@ function buildBoardSVG(containerEl, board) {
   // ---- background ----
   svg.appendChild(ns_el("rect", { x: 0, y: 0, width: S, height: S, fill: "url(#bg-grad)" }));
   svg.appendChild(ns_el("rect", {
-    x: 0, y: 0, width: S, height: S, fill: "#3a2412", opacity: 0.14, filter: "url(#wood-grain)",
+    x: 0, y: 0, width: S, height: S, fill: pal.grainFill, opacity: pal.grainOpacity, filter: "url(#wood-grain)",
   }));
 
   function line(x1, y1, x2, y2) {
     return ns_el("line", {
       x1, y1, x2, y2,
-      stroke: "#8a6a42", "stroke-width": 2, "stroke-linecap": "round", opacity: 0.75,
+      stroke: pal.lineStroke, "stroke-width": 2, "stroke-linecap": "round", opacity: pal.lineOpacity,
     });
   }
 
@@ -3928,8 +3962,8 @@ function buildBoardSVG(containerEl, board) {
   // common cell.
   function cell(cx, cy, r) {
     const g = ns_el("g", {});
-    g.appendChild(ns_el("circle", { cx, cy, r, fill: "url(#cell-cream)", stroke: lighten("#8a7a5a", 0.35), "stroke-width": CELL_BORDER_WIDTH }));
-    g.appendChild(ns_el("circle", { cx, cy, r: r - CELL_BORDER_WIDTH / 2 - 0.6, fill: "none", stroke: "#140c07", "stroke-width": 1, opacity: 0.55 }));
+    g.appendChild(ns_el("circle", { cx, cy, r, fill: "url(#cell-cream)", stroke: lighten(pal.cellBorderBase, pal.cellBorderLighten), "stroke-width": CELL_BORDER_WIDTH }));
+    g.appendChild(ns_el("circle", { cx, cy, r: r - CELL_BORDER_WIDTH / 2 - 0.6, fill: "none", stroke: pal.innerRing, "stroke-width": 1, opacity: pal.innerRingOpacity }));
     return g;
   }
 
@@ -3940,7 +3974,7 @@ function buildBoardSVG(containerEl, board) {
   function specialCell(cx, cy, r, colorHex) {
     const g = ns_el("g", {});
     g.appendChild(ns_el("circle", { cx, cy, r, fill: "url(#cell-plain)", stroke: lighten(colorHex, 0.35), "stroke-width": CELL_BORDER_WIDTH }));
-    g.appendChild(ns_el("circle", { cx, cy, r: r - CELL_BORDER_WIDTH / 2 - 0.6, fill: "none", stroke: "#140c07", "stroke-width": 1, opacity: 0.55 }));
+    g.appendChild(ns_el("circle", { cx, cy, r: r - CELL_BORDER_WIDTH / 2 - 0.6, fill: "none", stroke: pal.innerRing, "stroke-width": 1, opacity: pal.innerRingOpacity }));
     return g;
   }
 
@@ -3965,15 +3999,6 @@ function buildBoardSVG(containerEl, board) {
       svg.appendChild(g);
     });
   }
-
-  // Velo notturno per il tema scuro (vedi .board-night-overlay in CSS):
-  // trasparente in chiaro, scurisce legno/celle/linee in scuro. Aggiunto
-  // qui, DOPO celle/basi/case ma PRIMA che renderPawns() cominci ad
-  // appendere le pedine allo stesso <svg> — così le pedine restano sempre
-  // sopra il velo, mai scurite anche loro.
-  svg.appendChild(ns_el("rect", {
-    x: 0, y: 0, width: S, height: S, fill: "#0A0603", class: "board-night-overlay",
-  }));
 
   containerEl.innerHTML = "";
   containerEl.appendChild(svg);
@@ -4746,7 +4771,7 @@ function renderPawns(svg, board, pawns, lastSwap, lastCapture, lastHomeEntry) {
 // Bumped by hand each time a new build is produced — shown in the lobby so
 // it's obvious at a glance whether you're on the latest version, instead
 // of guessing from a stale browser tab or cache.
-const APP_VERSION = "v4.59";
+const APP_VERSION = "v4.61";
 
 let myColor = null;
 let myRoomId = null;
@@ -6619,6 +6644,17 @@ function updateLogoImages() {
     img.src = logoSrc(currentTheme);
   });
 }
+// Il tabellone è disegnato una volta sola in JS (buildBoardSVG legge
+// currentTheme al momento della costruzione, vedi BOARD_PALETTES) — quindi
+// se il cambio di tema arriva mentre si è già in partita, va ridisegnato
+// da capo per far apparire davvero la palette scura, non solo le altre
+// scritte/pulsanti intorno.
+function rebuildBoardForTheme() {
+  const wrap = $("#board-wrap");
+  if (!wrap || !boardSvg || !currentState) return;
+  boardSvg = buildBoardSVG(wrap, BOARD);
+  renderPawns(boardSvg, BOARD, currentState.pawns, currentState.lastSwap, currentState.lastCapture, currentState.lastHomeEntry);
+}
 function applyTheme(theme) {
   currentTheme = theme;
   document.documentElement.setAttribute("data-theme", theme);
@@ -6629,6 +6665,7 @@ function applyTheme(theme) {
   if (metaThemeColor) metaThemeColor.setAttribute("content", theme === "dark" ? "#171310" : "#FBF5E9");
   updateThemeToggleBtn();
   updateLogoImages();
+  rebuildBoardForTheme();
 }
 function toggleTheme() {
   applyTheme(currentTheme === "dark" ? "light" : "dark");
